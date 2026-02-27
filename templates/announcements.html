@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<section class="card">
+  <div class="chip-row">
+    <a class="chip {% if selected_kind == 'all' %}active{% endif %}" href="{{ url_for('announcements', kind='all') }}">All</a>
+    <a class="chip {% if selected_kind == 'university' %}active{% endif %}" href="{{ url_for('announcements', kind='university') }}">University</a>
+    <a class="chip {% if selected_kind == 'class' %}active{% endif %}" href="{{ url_for('announcements', kind='class') }}">Class</a>
+    <a class="chip {% if selected_kind == 'general' %}active{% endif %}" href="{{ url_for('announcements', kind='general') }}">General</a>
+  </div>
+
+  {% if announcements %}
+    {% for ann in announcements %}
+    <article class="list-card" id="ann-{{ ann.id }}">
+      <div class="between">
+        <p class="tag {{ ann.type }}">{{ ann.type|capitalize }}</p>
+        <p class="meta">{{ ann.created_at }}</p>
+      </div>
+      <h4>{{ ann.title }}</h4>
+      <p>{{ ann.message }}</p>
+      <p class="meta">By {{ ann.author_name }} | Target: {{ ann.target_branch }}</p>
+    </article>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No announcements yet.</p>
+  {% endif %}
+</section>
+
+{% if can_manage %}
+<section class="grid-2">
+  <article class="card">
+    <h3>Post New Announcement</h3>
+    <form class="form" method="post">
+      <label>Type</label>
+      <select name="announce_type">
+        <option value="class">Class Announcement</option>
+        <option value="university">University Announcement</option>
+        <option value="general">General</option>
+      </select>
+
+      <label>Department / Target Branch</label>
+      <input type="text" name="target_branch" placeholder="CSE or ALL" value="ALL" />
+
+      <label>Title</label>
+      <input type="text" name="title" required />
+
+      <label>Message</label>
+      <textarea name="message" rows="6" required></textarea>
+
+      <label class="check-row">
+        <input type="checkbox" name="send_email" />
+        Also send this announcement through email
+      </label>
+
+      <button class="btn" type="submit">Post Announcement</button>
+    </form>
+  </article>
+
+  <article class="card">
+    <h3>My Announcements</h3>
+    {% if my_announcements %}
+      {% for ann in my_announcements %}
+      <div class="list-card between">
+        <div>
+          <p class="tag {{ ann.type }}">{{ ann.type|capitalize }}</p>
+          <h4>{{ ann.title }}</h4>
+          <p class="meta">{{ ann.created_at }}</p>
+        </div>
+        <form method="post" action="{{ url_for('delete_announcement', announcement_id=ann.id) }}">
+          <button class="btn btn-danger" type="submit">Delete</button>
+        </form>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No announcements posted by you yet.</p>
+    {% endif %}
+  </article>
+</section>
+{% endif %}
+{% endblock %}

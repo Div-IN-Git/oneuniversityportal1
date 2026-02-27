@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block app_content %}
+{% if mode == 'student' %}
+<section class="card">
+  <div class="chip-row">
+    <a class="chip {% if not subject_filter %}active{% endif %}" href="{{ url_for('notes_page') }}">All</a>
+    {% for s in subjects %}
+      <a class="chip {% if subject_filter == s.subject %}active{% endif %}" href="{{ url_for('notes_page', subject=s.subject) }}">{{ s.subject }}</a>
+    {% endfor %}
+  </div>
+
+  {% if notes %}
+    {% for note in notes %}
+    <article class="list-card" id="note-{{ note.id }}">
+      <div class="between gap">
+        <div>
+          <h4>📄 {{ note.title }}{% if note.file_name %}.pdf{% endif %}</h4>
+          <p class="meta">Uploaded by {{ note.professor_name }} - {{ note.created_at }}</p>
+          {% if note.content %}<p>{{ note.content[:180] }}{% if note.content|length > 180 %}...{% endif %}</p>{% endif %}
+          {% if note.is_important %}<span class="tag warning">Important</span>{% endif %}
+          <span class="tag">{{ note.subject }}</span>
+        </div>
+        <div class="action-col">
+          <a class="btn btn-light" href="{{ url_for('download_note', note_id=note.id) }}">⬇ Download</a>
+          <a class="btn btn-light" href="{{ url_for('user_profile', user_id=note.professor_id) }}">View Profile</a>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No notes found for this subject.</p>
+  {% endif %}
+</section>
+{% else %}
+<section class="grid-2">
+  <article class="card">
+    <h3>Upload New Notes</h3>
+    <form class="form" method="post" enctype="multipart/form-data">
+      <label>Note Name</label>
+      <input type="text" name="title" placeholder="Unit 3 - Trees" required />
+
+      <label>Subject</label>
+      <input type="text" name="subject" placeholder="DSA" required />
+
+      <label>PDF File (optional if text notes provided)</label>
+      <input type="file" name="pdf_file" accept=".pdf" />
+
+      <label>Note Summary / Text</label>
+      <textarea name="content" rows="8" placeholder="Paste points so exam-ready generator can use this..."></textarea>
+
+      <label class="check-row">
+        <input type="checkbox" name="is_important" />
+        Mark important for exam
+      </label>
+
+      <button class="btn" type="submit">Upload Note</button>
+    </form>
+  </article>
+
+  <article class="card">
+    <h3>My Uploaded Notes ({{ my_notes|length }})</h3>
+    {% if my_notes %}
+      {% for note in my_notes %}
+      <div class="list-card">
+        <div class="between gap">
+          <div>
+            <h4>{{ note.title }}{% if note.file_name %}.pdf{% endif %}</h4>
+            <p class="meta">{{ note.subject }} - {{ note.created_at }}{% if current_user.role == 'admin' %} - {{ note.professor_name }}{% endif %}</p>
+          </div>
+          <div class="action-col">
+            <a class="btn btn-light" href="{{ url_for('download_note', note_id=note.id) }}">Download</a>
+          </div>
+        </div>
+
+        <form class="inline full" method="post" action="{{ url_for('rename_note', note_id=note.id) }}">
+          <input type="text" name="new_title" placeholder="Rename title" required />
+          <button class="btn btn-light" type="submit">Rename</button>
+        </form>
+
+        <form method="post" action="{{ url_for('delete_note', note_id=note.id) }}">
+          <button class="btn btn-danger" type="submit">Delete</button>
+        </form>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No notes uploaded yet.</p>
+    {% endif %}
+  </article>
+</section>
+{% endif %}
+{% endblock %}

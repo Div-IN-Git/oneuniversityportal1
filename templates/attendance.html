@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% block app_content %}
+{% if mode == 'student' %}
+<section class="card">
+  <div class="attendance-overview">
+    <div class="ring" style="--val: {{ overall.percent }}">
+      <strong>{{ overall.percent }}%</strong>
+    </div>
+    <div>
+      <h3>Overall: {{ overall.present }} / {{ overall.total }} classes</h3>
+      {% if overall.percent < attendance_threshold %}
+      <p class="text-danger">You need regular attendance to reach {{ attendance_threshold }}%.</p>
+      {% else %}
+      <p class="text-ok">Good progress. Keep consistency till semester end.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <h3>Subject-wise Attendance</h3>
+  {% if rows %}
+    {% for item in rows %}
+    <div class="att-row">
+      <div class="between">
+        <strong>{{ item.subject }}</strong>
+        <span class="{% if item.is_shortage %}text-danger{% endif %}">{{ item.percent }}% ({{ item.present }}/{{ item.total }})</span>
+      </div>
+      <div class="progress"><span style="width: {{ item.percent }}%"></span></div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No attendance records yet.</p>
+  {% endif %}
+</section>
+{% else %}
+<section class="grid-2">
+  <article class="card">
+    <h3>Select Student</h3>
+    <form class="form" method="get">
+      <select name="student_id" required>
+        {% for student in students %}
+        <option value="{{ student.id }}" {% if selected_student and selected_student.id == student.id %}selected{% endif %}>
+          {{ student.name }} ({{ student.university_id }})
+        </option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-light" type="submit">Load</button>
+    </form>
+
+    {% if selected_student %}
+    <hr />
+    <p><strong>{{ selected_student.name }}</strong></p>
+    <p class="meta">{{ selected_student.email }} | {{ selected_student.branch }}</p>
+    <p class="meta">Overall attendance: {{ overall.percent }}%</p>
+    <form method="post" action="{{ url_for('send_attendance_alert', student_id=selected_student.id) }}">
+      <button class="btn" type="submit">Send Shortage Email</button>
+    </form>
+    {% endif %}
+  </article>
+
+  <article class="card">
+    <h3>Mark Attendance</h3>
+    <form class="form" method="post">
+      <label>Student</label>
+      <select name="student_id" required>
+        {% for student in students %}
+        <option value="{{ student.id }}" {% if selected_student and selected_student.id == student.id %}selected{% endif %}>
+          {{ student.name }}
+        </option>
+        {% endfor %}
+      </select>
+
+      <label>Subject</label>
+      <input type="text" name="subject" placeholder="DSA" required />
+
+      <label>Status</label>
+      <select name="status" required>
+        <option value="present">Present</option>
+        <option value="absent">Absent</option>
+      </select>
+
+      <label>Class Date</label>
+      <input type="date" name="class_date" />
+
+      <label class="check-row">
+        <input type="checkbox" name="send_email" />
+        If shortage occurs, send email alert
+      </label>
+
+      <button class="btn" type="submit">Save Attendance</button>
+    </form>
+  </article>
+</section>
+
+<section class="card">
+  <h3>Subject-wise Attendance</h3>
+  {% if rows %}
+    {% for item in rows %}
+    <div class="att-row">
+      <div class="between">
+        <strong>{{ item.subject }}</strong>
+        <span class="{% if item.is_shortage %}text-danger{% endif %}">{{ item.percent }}% ({{ item.present }}/{{ item.total }})</span>
+      </div>
+      <div class="progress"><span style="width: {{ item.percent }}%"></span></div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No attendance records for this student yet.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

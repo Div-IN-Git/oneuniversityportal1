@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<section class="card">
+  <div class="between">
+    <h3>Notifications</h3>
+    <form method="post">
+      <button class="btn btn-light" type="submit">Mark all as read</button>
+    </form>
+  </div>
+
+  {% if notifications %}
+    {% for n in notifications %}
+    <article class="list-card {% if not n.is_read %}unread{% endif %}">
+      <p>{{ n.message }}</p>
+      <p class="meta">{{ n.created_at }}</p>
+      {% if n.link %}<a class="btn btn-light" href="{{ n.link }}">Open</a>{% endif %}
+    </article>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No notifications yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

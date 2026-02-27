@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<section class="grid-2">
+  <article class="card">
+    <h3>Generate Exam-Ready Questions</h3>
+    <form class="form" method="post">
+      <label>Source Type</label>
+      <select name="source_type" id="source_type">
+        <option value="syllabus">Syllabus Text</option>
+        <option value="note">From Uploaded Note</option>
+      </select>
+
+      <div id="note_picker" class="hidden">
+        <label>Select Note</label>
+        <select name="note_id">
+          {% for note in notes %}
+          <option value="{{ note.id }}">{{ note.title }} ({{ note.subject }} | {{ note.professor_name }})</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div id="syllabus_box">
+        <label>Syllabus / Topic Content</label>
+        <textarea name="syllabus_text" rows="10" placeholder="Paste syllabus modules, key formulas, concepts..."></textarea>
+      </div>
+
+      <button class="btn" type="submit">Generate</button>
+    </form>
+  </article>
+
+  <article class="card">
+    <h3>Generated Questions</h3>
+    {% if generated_questions %}
+    <ol>
+      {% for q in generated_questions %}
+      <li>{{ q }}</li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="muted">No generated questions yet.</p>
+    {% endif %}
+  </article>
+</section>
+
+<script>
+  const sourceType = document.getElementById('source_type');
+  const notePicker = document.getElementById('note_picker');
+  const syllabusBox = document.getElementById('syllabus_box');
+
+  function toggleSource() {
+    const useNote = sourceType.value === 'note';
+    notePicker.classList.toggle('hidden', !useNote);
+    syllabusBox.classList.toggle('hidden', useNote);
+  }
+
+  sourceType.addEventListener('change', toggleSource);
+  toggleSource();
+</script>
+{% endblock %}

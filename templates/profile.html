@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% block app_content %}
+{% if own_profile %}
+<section class="card">
+  <h3>My Profile</h3>
+  <form class="form" method="post" enctype="multipart/form-data">
+    <label>University ID</label>
+    <input type="text" value="{{ profile_user.university_id }}" disabled />
+
+    <label>Full Name</label>
+    <input type="text" name="name" value="{{ profile_user.name or '' }}" required />
+
+    <label>Phone</label>
+    <input type="text" name="phone" value="{{ profile_user.phone or '' }}" />
+
+    <label>Photo URL</label>
+    <input type="url" name="photo_url" value="{{ profile_user.photo_url or '' }}" placeholder="https://..." />
+
+    <label>Upload Profile Photo</label>
+    <input type="file" name="photo_file" accept=".png,.jpg,.jpeg,.webp" />
+
+    {% if profile_user.photo_blob %}
+    <img class="avatar" src="{{ url_for('user_photo', user_id=profile_user.id) }}" alt="{{ profile_user.name }}" />
+    {% elif profile_user.photo_url %}
+    <img class="avatar" src="{{ profile_user.photo_url }}" alt="{{ profile_user.name }}" />
+    {% endif %}
+
+    <label>Bio</label>
+    <textarea name="bio" rows="4">{{ profile_user.bio or '' }}</textarea>
+
+    {% if current_user.role == 'professor' %}
+    <label>Subject(s) Taught</label>
+    <input type="text" name="subject" value="{{ profile_user.subject or '' }}" />
+
+    <label>Designation</label>
+    <input type="text" name="designation" value="{{ profile_user.designation or '' }}" />
+
+    <label>Free for doubts</label>
+    <input type="text" name="free_hours" value="{{ profile_user.free_hours or '' }}" placeholder="Mon-Fri 3 PM - 5 PM" />
+
+    <label>Branch / Department</label>
+    <input type="text" name="branch" value="{{ profile_user.branch or '' }}" />
+    {% endif %}
+
+    {% if current_user.role == 'student' %}
+    <label>Branch</label>
+    <input type="text" name="branch" value="{{ profile_user.branch or '' }}" />
+
+    <label>Program</label>
+    <input type="text" name="study_program" value="{{ profile_user.study_program or '' }}" />
+
+    <label class="check-row">
+      <input type="checkbox" name="open_to_collab" {% if profile_user.open_to_collab %}checked{% endif %} />
+      Open to collaboration with professors
+    </label>
+    {% endif %}
+
+    {% if current_user.role == 'admin' %}
+    <label>Designation</label>
+    <input type="text" name="designation" value="{{ profile_user.designation or '' }}" />
+    {% endif %}
+
+    <button class="btn" type="submit">Save Profile</button>
+  </form>
+</section>
+{% else %}
+<section class="grid-2">
+  <article class="card">
+    <div class="between">
+      <h3>{{ profile_user.name }}</h3>
+      <span class="tag {{ profile_user.role }}">{{ profile_user.role }}</span>
+    </div>
+
+    {% if profile_user.photo_blob %}
+    <img class="avatar" src="{{ url_for('user_photo', user_id=profile_user.id) }}" alt="{{ profile_user.name }}" />
+    {% elif profile_user.photo_url %}
+    <img class="avatar" src="{{ profile_user.photo_url }}" alt="{{ profile_user.name }}" />
+    {% endif %}
+
+    <p>{{ profile_user.bio or 'No bio available.' }}</p>
+    <p class="meta">✉ {{ profile_user.email }}</p>
+    <p class="meta">📞 {{ profile_user.phone or 'Not set' }}</p>
+    <p class="meta">Designation: {{ profile_user.designation or 'Not set' }}</p>
+    <p class="meta">Subject: {{ profile_user.subject or 'Not set' }}</p>
+    <p class="meta">Doubt Hours: {{ profile_user.free_hours or 'Not set' }}</p>
+
+    {% if current_user.role == 'student' and profile_user.role == 'professor' %}
+      {% if is_following %}
+      <form method="post" action="{{ url_for('unfollow_professor', professor_id=profile_user.id) }}">
+        <button class="btn btn-soft" type="submit">Unfollow</button>
+      </form>
+      {% else %}
+      <form method="post" action="{{ url_for('follow_professor', professor_id=profile_user.id) }}">
+        <button class="btn" type="submit">Follow</button>
+      </form>
+      {% endif %}
+    {% endif %}
+
+    {% if timetable %}
+    <hr />
+    <h4>Timetable</h4>
+    <a class="btn btn-light" href="{{ url_for('download_timetable', timetable_id=timetable.id) }}">View Timetable</a>
+    {% endif %}
+  </article>
+
+  <article class="card">
+    <h3>Recent Notes</h3>
+    {% if notes %}
+      {% for note in notes %}
+      <div class="list-card between">
+        <div>
+          <h4>{{ note.title }}</h4>
+          <p class="meta">{{ note.subject }} | {{ note.created_at }}</p>
+        </div>
+        <a class="btn btn-light" href="{{ url_for('download_note', note_id=note.id) }}">Download</a>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No notes published yet.</p>
+    {% endif %}
+
+    <h3>Question Papers</h3>
+    {% if papers %}
+      {% for p in papers %}
+      <div class="list-card between">
+        <div>
+          <h4>{{ p.title }}</h4>
+          <p class="meta">{{ p.subject }} | {{ p.exam_year }}</p>
+        </div>
+        <a class="btn btn-light" href="{{ url_for('download_previous_question', question_id=p.id) }}">Download</a>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No question papers uploaded yet.</p>
+    {% endif %}
+  </article>
+</section>
+{% endif %}
+{% endblock %}

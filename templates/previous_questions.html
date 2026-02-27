@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<section class="card">
+  <div class="chip-row">
+    <a class="chip {% if not subject_filter %}active{% endif %}" href="{{ url_for('question_papers') }}">All</a>
+    {% for s in subjects %}
+      <a class="chip {% if subject_filter == s.subject %}active{% endif %}" href="{{ url_for('question_papers', subject=s.subject) }}">{{ s.subject }}</a>
+    {% endfor %}
+  </div>
+
+  {% if questions %}
+    {% for q in questions %}
+    <article class="list-card">
+      <div class="between">
+        <div>
+          <h4>📄 {{ q.title }}{% if q.file_name %}.pdf{% endif %}</h4>
+          <p class="meta">Year: {{ q.exam_year }} - Subject: {{ q.subject }} - {{ q.uploader_name }}</p>
+        </div>
+        <a class="btn btn-light" href="{{ url_for('download_previous_question', question_id=q.id) }}">⬇ Download</a>
+      </div>
+
+      {% if q.important_questions %}
+      <div class="important-box">
+        <p class="meta strong">⭐ Important Questions</p>
+        {% for line in q.important_questions.split('\n') if line.strip() %}
+        <p class="iq-item">📌 {{ line }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if q.content %}
+      <p>{{ q.content[:220] }}{% if q.content|length > 220 %}...{% endif %}</p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No question papers found.</p>
+  {% endif %}
+</section>
+
+{% if current_user.role in ['professor', 'admin'] %}
+<section class="card">
+  <h3>Upload Question Paper</h3>
+  <form class="form" method="post" enctype="multipart/form-data">
+    <label>Subject</label>
+    <input type="text" name="subject" required />
+
+    <label>Exam Year</label>
+    <input type="text" name="exam_year" placeholder="2025" required />
+
+    <label>Title</label>
+    <input type="text" name="title" required />
+
+    <label>PDF File (optional if text provided)</label>
+    <input type="file" name="pdf_file" accept=".pdf" />
+
+    <label>Important Questions (one per line)</label>
+    <textarea name="important_questions" rows="4" placeholder="Q1: ...&#10;Q2: ..."></textarea>
+
+    <label>Question Content</label>
+    <textarea name="content" rows="7" placeholder="Paste question paper text if PDF is not uploaded"></textarea>
+
+    <button class="btn" type="submit">Upload</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

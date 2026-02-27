@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<section class="card center">
+  <h2>Error {{ code }}</h2>
+  <p>{{ message }}</p>
+  <a class="btn" href="{{ url_for('dashboard' if current_user else 'index') }}">Go Back</a>
+</section>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<section class="card">
+  <form class="inline" method="get">
+    <label>Branch:</label>
+    <select name="branch">
+      <option value="">All</option>
+      {% for b in branches %}
+      <option value="{{ b.branch }}" {% if branch_filter == b.branch %}selected{% endif %}>{{ b.branch }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-light" type="submit">Apply</button>
+  </form>
+
+  {% if timetables %}
+    {% for t in timetables %}
+    <article class="list-card between">
+      <div>
+        <h4>🗓 {{ t.title }}</h4>
+        <p class="meta">Branch: {{ t.branch }} | Uploaded by {{ t.uploader_name }} | {{ t.created_at }}</p>
+      </div>
+      <a class="btn btn-light" href="{{ url_for('download_timetable', timetable_id=t.id) }}">View / Download</a>
+    </article>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No timetable available for selected branch.</p>
+  {% endif %}
+</section>
+
+{% if current_user.role == 'admin' %}
+<section class="card">
+  <h3>Upload Timetable</h3>
+  <form class="form" method="post" enctype="multipart/form-data">
+    <label>Branch</label>
+    <input type="text" name="branch" placeholder="CSE" required />
+
+    <label>Title</label>
+    <input type="text" name="title" placeholder="CSE Timetable - Sem 4" required />
+
+    <label>Timetable File (PDF/Image)</label>
+    <input type="file" name="timetable_file" accept=".pdf,.png,.jpg,.jpeg" required />
+
+    <button class="btn" type="submit">Upload Timetable</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

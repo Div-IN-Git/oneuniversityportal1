@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UUP Portal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260227f') }}" />
+  </head>
+  <body class="{% if current_user %}app-body{% else %}guest-body{% endif %}">
+    {% if current_user %}
+    <div class="app-shell">
+      <aside class="left-sidebar" id="leftSidebar">
+        <a class="brand" href="{{ url_for('dashboard') }}">🎓 UUP</a>
+
+        <section class="user-chip">
+          {% if current_user.photo_blob %}
+          <img class="avatar-thumb" src="{{ url_for('user_photo', user_id=current_user.id) }}" alt="{{ current_user.name }}" />
+          {% elif current_user.photo_url %}
+          <img class="avatar-thumb" src="{{ current_user.photo_url }}" alt="{{ current_user.name }}" />
+          {% else %}
+          <div class="avatar-circle">{{ (current_user.name or 'U')[0]|upper }}</div>
+          {% endif %}
+          <div>
+            <p class="u-name">{{ current_user.name }}</p>
+            <p class="u-role">{{ current_user.university_id or current_user.role|upper }}</p>
+            <p class="u-role">{{ current_user.role|upper }}</p>
+          </div>
+        </section>
+
+        <nav class="menu-list">
+          <a class="menu-item {% if active_nav == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">🏠 Home</a>
+          <a class="menu-item {% if active_nav == 'announcements' %}active{% endif %}" href="{{ url_for('announcements') }}">📢 Announcements</a>
+          <a class="menu-item {% if active_nav == 'notes' %}active{% endif %}" href="{{ url_for('notes_page') }}">📁 Notes & Materials</a>
+          <a class="menu-item {% if active_nav == 'question_papers' %}active{% endif %}" href="{{ url_for('question_papers') }}">📄 Question Papers</a>
+          <a class="menu-item {% if active_nav == 'attendance' %}active{% endif %}" href="{{ url_for('attendance') }}">✅ Attendance</a>
+          <a class="menu-item {% if active_nav == 'timetables' %}active{% endif %}" href="{{ url_for('timetables') }}">🗓 Timetables</a>
+          <a class="menu-item {% if active_nav == 'faculty' %}active{% endif %}" href="{{ url_for('faculty_directory') }}">👨‍🏫 Faculty Directory</a>
+          <a class="menu-item {% if active_nav == 'exam_ready' %}active{% endif %}" href="{{ url_for('exam_ready') }}">🧠 Exam Ready</a>
+          <a class="menu-item {% if active_nav == 'notifications' %}active{% endif %}" href="{{ url_for('notifications') }}">🔔 Notifications{% if unread_count %} ({{ unread_count }}){% endif %}</a>
+          <a class="menu-item {% if active_nav == 'profile' %}active{% endif %}" href="{{ url_for('profile') }}">👤 My Profile</a>
+        </nav>
+
+        <a class="signout-btn" href="{{ url_for('logout') }}">Sign Out</a>
+      </aside>
+
+      <div class="main-shell">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="icon-btn" id="mobileSidebarToggle" type="button">☰</button>
+            <h1>{{ page_title or 'Dashboard' }}</h1>
+          </div>
+          <form class="search-form" action="{{ url_for('faculty_directory') }}" method="get">
+            <input
+              type="text"
+              id="globalSearchInput"
+              name="q"
+              placeholder="Search professors & admins..."
+              value="{{ request.args.get('q', '') }}"
+              autocomplete="off"
+            />
+            <div class="search-suggest" id="searchSuggest"></div>
+          </form>
+          <button class="btn drawer-btn" type="button" id="rightDrawerToggle">Quick Panel</button>
+        </header>
+
+        <main class="content-area">
+          {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+          <section class="flash-stack">
+            {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </section>
+          {% endif %}
+          {% endwith %}
+
+          {% block app_content %}{% endblock %}
+        </main>
+      </div>
+
+      <aside class="right-drawer" id="rightDrawer">
+        <h3>Quick Panel</h3>
+        <div class="drawer-links">
+          <a href="{{ url_for('notes_page') }}">Upload / View Notes</a>
+          <a href="{{ url_for('question_papers') }}">Question Papers</a>
+          <a href="{{ url_for('announcements') }}">Post Announcement</a>
+          <a href="{{ url_for('attendance') }}">Attendance</a>
+          <a href="{{ url_for('timetables') }}">Timetables</a>
+        </div>
+
+        <h4>Recent Notifications</h4>
+        <div class="drawer-notes">
+          {% if quick_notifications %}
+            {% for item in quick_notifications %}
+            <article class="tiny-card">
+              <p>{{ item.message }}</p>
+              <span>{{ item.created_at }}</span>
+            </article>
+            {% endfor %}
+          {% else %}
+            <p class="muted">No recent notifications.</p>
+          {% endif %}
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      const drawerBtn = document.getElementById('rightDrawerToggle');
+      const rightDrawer = document.getElementById('rightDrawer');
+      const sidebarToggle = document.getElementById('mobileSidebarToggle');
+      const leftSidebar = document.getElementById('leftSidebar');
+      const searchInput = document.getElementById('globalSearchInput');
+      const searchSuggest = document.getElementById('searchSuggest');
+      let searchTimer = null;
+      let activeIdx = -1;
+      let cachedItems = [];
+
+      if (drawerBtn && rightDrawer) {
+        drawerBtn.addEventListener('click', () => {
+          rightDrawer.classList.toggle('open');
+        });
+      }
+
+      if (sidebarToggle && leftSidebar) {
+        sidebarToggle.addEventListener('click', () => {
+          leftSidebar.classList.toggle('open');
+        });
+      }
+
+      function closeSuggest() {
+        if (!searchSuggest) return;
+        searchSuggest.classList.remove('open');
+        searchSuggest.innerHTML = '';
+        activeIdx = -1;
+        cachedItems = [];
+      }
+
+      function renderSuggest(items) {
+        if (!searchSuggest) return;
+        if (!items.length) {
+          closeSuggest();
+          return;
+        }
+
+        cachedItems = items;
+        searchSuggest.innerHTML = items
+          .map((item, idx) => {
+            const avatar = item.avatar
+              ? `<img class="ss-avatar" src="${item.avatar}" alt="${item.name}" />`
+              : `<div class="ss-avatar ss-fallback">${item.name[0].toUpperCase()}</div>`;
+            const roleBadge = item.role === 'admin' ? 'ss-role admin' : 'ss-role professor';
+            return `
+              <a class="ss-item ${idx === activeIdx ? 'active' : ''}" data-idx="${idx}" href="/user/${item.id}">
+                ${avatar}
+                <div class="ss-meta">
+                  <strong>${item.name}</strong>
+                  <span>${item.designation || item.subject || ''}</span>
+                </div>
+                <span class="${roleBadge}">${item.role}</span>
+              </a>
+            `;
+          })
+          .join('');
+        searchSuggest.classList.add('open');
+      }
+
+      async function fetchSuggestions(query) {
+        try {
+          const response = await fetch(`/search/professor-suggestions?q=${encodeURIComponent(query)}`);
+          if (!response.ok) return closeSuggest();
+          const data = await response.json();
+          renderSuggest(data.items || []);
+        } catch (_) {
+          closeSuggest();
+        }
+      }
+
+      if (searchInput && searchSuggest) {
+        searchInput.addEventListener('input', () => {
+          const q = searchInput.value.trim();
+          if (searchTimer) clearTimeout(searchTimer);
+          if (q.length < 1) {
+            closeSuggest();
+            return;
+          }
+          searchTimer = setTimeout(() => fetchSuggestions(q), 140);
+        });
+
+        searchInput.addEventListener('keydown', (event) => {
+          if (!searchSuggest.classList.contains('open') || !cachedItems.length) return;
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            activeIdx = (activeIdx + 1) % cachedItems.length;
+            renderSuggest(cachedItems);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            activeIdx = (activeIdx - 1 + cachedItems.length) % cachedItems.length;
+            renderSuggest(cachedItems);
+          } else if (event.key === 'Enter' && activeIdx >= 0) {
+            event.preventDefault();
+            window.location.href = `/user/${cachedItems[activeIdx].id}`;
+          } else if (event.key === 'Escape') {
+            closeSuggest();
+          }
+        });
+
+        document.addEventListener('click', (event) => {
+          if (!searchSuggest.contains(event.target) && event.target !== searchInput) {
+            closeSuggest();
+          }
+        });
+      }
+    </script>
+    {% else %}
+    <main class="guest-wrap">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <section class="flash-stack">
+        {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </section>
+      {% endif %}
+      {% endwith %}
+
+      {% block guest_content %}{% endblock %}
+    </main>
+    {% endif %}
+  </body>
+</html>

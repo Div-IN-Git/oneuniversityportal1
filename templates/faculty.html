@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<section class="card">
+  <h3>Faculty Directory</h3>
+  {% if faculty_rows %}
+  <div class="faculty-grid">
+    {% for f in faculty_rows %}
+    <article class="faculty-card">
+      <div class="between">
+        <div class="fac-head">
+          {% if f.photo_blob %}
+          <img class="avatar-thumb sm" src="{{ url_for('user_photo', user_id=f.id) }}" alt="{{ f.name }}" />
+          {% elif f.photo_url %}
+          <img class="avatar-thumb sm" src="{{ f.photo_url }}" alt="{{ f.name }}" />
+          {% else %}
+          <div class="avatar-circle sm">{{ (f.name or 'U')[0]|upper }}</div>
+          {% endif %}
+          <div>
+            <h4>{{ f.name }}</h4>
+            <p class="meta">{{ f.designation or 'Faculty' }}</p>
+          </div>
+        </div>
+        <span class="tag {{ f.role }}">{{ f.role }}</span>
+      </div>
+      <p class="meta">✉ {{ f.email }}</p>
+      <p class="meta">📞 {{ f.phone or 'Not set' }}</p>
+      <p class="meta">Subject: {{ f.subject or 'Not set' }}</p>
+      <p class="meta">Notes: {{ f.note_count }} | Question papers: {{ f.paper_count }}</p>
+      <div class="between gap top-gap">
+        <a class="btn btn-light full" href="{{ url_for('user_profile', user_id=f.id) }}">View Profile</a>
+        {% if current_user.role == 'student' and f.role == 'professor' %}
+          {% if f.is_following %}
+          <form method="post" action="{{ url_for('unfollow_professor', professor_id=f.id) }}">
+            <button class="btn btn-soft" type="submit">Unfollow</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('follow_professor', professor_id=f.id) }}">
+            <button class="btn" type="submit">Follow</button>
+          </form>
+          {% endif %}
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No faculty found for this search.</p>
+  {% endif %}
+</section>
+{% endblock %}

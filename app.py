@@ -1573,9 +1573,62 @@ def create_notification(user_id: int, message: str, link: str | None = None) -> 
     )
 
 
-def get_recipients_for_announcement(author_id: int, target_branch: str) -> list[sqlite3.Row]:
+def get_recipients_for_announcement(
+    author_id: int, target_branch: str, announce_type: str
+) -> list[sqlite3.Row]:
     db = get_db()
     target = (target_branch or "ALL").strip().upper()
+    kind = (announce_type or "class").strip().lower()
+
+    if kind == "university":
+        return db.execute(
+            "SELECT id, email, name FROM users WHERE id != ?",
+            (author_id,),
+        ).fetchall()
+
+    if kind == "class":
+        if target in {"ALL", ""}:
+            return db.execute(
+                """
+                SELECT id, email, name
+                FROM users
+                WHERE id != ?
+                  AND (
+                        role IN ('professor', 'admin')
+                        OR (
+                            role = 'student'
+                            AND EXISTS (
+                                SELECT 1
+                                FROM follows f
+                                WHERE f.student_id = users.id
+                                  AND f.professor_id = ?
+                            )
+                        )
+                      )
+                """,
+                (author_id, author_id),
+            ).fetchall()
+
+        return db.execute(
+            """
+            SELECT id, email, name
+            FROM users
+                WHERE id != ?
+                  AND (
+                        role IN ('professor', 'admin')
+                        OR (
+                            role = 'student'
+                            AND EXISTS (
+                                SELECT 1
+                                FROM follows f
+                                WHERE f.student_id = users.id
+                                  AND f.professor_id = ?
+                            )
+                        )
+                      )
+            """,
+            (author_id, author_id),
+        ).fetchall()
 
     if target in {"ALL", ""}:
         return db.execute(
@@ -1850,27 +1903,67 @@ def dashboard():
     if user["role"] == "student":
         attendance_rows = attendance_summary(user["id"])
         overall = overall_attendance(attendance_rows)
+        followed_professors = db.execute(
+            """
+            SELECT u.id, u.name, u.designation, u.subject, u.branch
+            FROM follows f
+            JOIN users u ON u.id = f.professor_id
+            WHERE f.student_id = ?
+            ORDER BY u.name
+            """,
+            (user["id"],),
+        ).fetchall()
 
         recent_announcements = db.execute(
             """
             SELECT a.*, u.name AS author_name
             FROM announcements a
             JOIN users u ON u.id = a.author_id
-            WHERE UPPER(a.target_branch) = 'ALL' OR UPPER(a.target_branch) = UPPER(COALESCE(?, ''))
+            WHERE (
+                    a.type = 'university'
+                    OR (
+                        a.type = 'class'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM follows f
+                            WHERE f.student_id = ?
+                              AND f.professor_id = a.author_id
+                        )
+                    )
+                    OR (
+                        a.type = 'general'
+                        AND (UPPER(a.target_branch) = 'ALL' OR UPPER(a.target_branch) = UPPER(COALESCE(?, '')))
+                    )
+                  )
             ORDER BY a.created_at DESC
             LIMIT 5
             """,
-            (user["branch"],),
+            (user["id"], user["branch"]),
         ).fetchall()
 
         note_count = db.execute("SELECT COUNT(*) AS c FROM notes").fetchone()["c"]
         ann_count = db.execute(
             """
             SELECT COUNT(*) AS c
-            FROM announcements
-            WHERE UPPER(target_branch) = 'ALL' OR UPPER(target_branch) = UPPER(COALESCE(?, ''))
+            FROM announcements a
+            WHERE (
+                    a.type = 'university'
+                    OR (
+                        a.type = 'class'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM follows f
+                            WHERE f.student_id = ?
+                              AND f.professor_id = a.author_id
+                        )
+                    )
+                    OR (
+                        a.type = 'general'
+                        AND (UPPER(a.target_branch) = 'ALL' OR UPPER(a.target_branch) = UPPER(COALESCE(?, '')))
+                    )
+                  )
             """,
-            (user["branch"],),
+            (user["id"], user["branch"]),
         ).fetchone()["c"]
 
         return render_page(
@@ -1886,6 +1979,7 @@ def dashboard():
             risk_rows=None,
             users=None,
             admin_notes=None,
+            followed_professors=followed_professors,
         )
 
     if user["role"] == "professor":
@@ -1944,6 +2038,7 @@ def dashboard():
             announcement_count=None,
             users=None,
             admin_notes=None,
+            followed_professors=None,
         )
 
     stats = {
@@ -1981,6 +2076,7 @@ def dashboard():
         announcement_count=None,
         my_notes=None,
         risk_rows=None,
+        followed_professors=None,
     )
 
 
@@ -2271,7 +2367,7 @@ def announcements():
         )
         announcement_id = cursor.lastrowid
 
-        recipients = get_recipients_for_announcement(user["id"], target_branch)
+        recipients = get_recipients_for_announcement(user["id"], target_branch, announce_type)
         for rec in recipients:
             create_notification(
                 rec["id"],
@@ -2319,8 +2415,29 @@ def announcements():
     where_parts = []
     if user["role"] == "student":
         where_parts.append(
-            "(UPPER(a.target_branch) = 'ALL' OR UPPER(a.target_branch) = UPPER(COALESCE(?, '')))"
+            """
+            (
+                a.type = 'university'
+                OR (
+                    a.type = 'class'
+                    AND EXISTS (
+                        SELECT 1
+                        FROM follows f
+                        WHERE f.student_id = ?
+                          AND f.professor_id = a.author_id
+                    )
+                )
+                OR (
+                    a.type = 'general'
+                    AND (
+                        UPPER(a.target_branch) = 'ALL'
+                        OR UPPER(a.target_branch) = UPPER(COALESCE(?, ''))
+                    )
+                )
+            )
+            """
         )
+        params.append(user["id"])
         params.append(user["branch"])
 
     if kind in {"class", "university", "general"}:

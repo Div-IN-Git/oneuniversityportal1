@@ -66,6 +66,29 @@
   </article>
 </section>
 
+<section>
+  <article class="card">
+    <div class="card-head between">
+      <h3>👨‍🏫 Followed Professors</h3>
+      <a class="btn btn-light" href="{{ url_for('faculty_directory') }}">Manage</a>
+    </div>
+    {% if followed_professors %}
+      {% for prof in followed_professors %}
+      <div class="list-card between">
+        <div>
+          <h4>{{ prof.name }}</h4>
+          <p class="meta">{{ prof.designation or 'Professor' }} | {{ prof.branch or 'ALL' }}</p>
+          <p class="meta">{{ prof.subject or 'Subject not set' }}</p>
+        </div>
+        <a class="btn btn-light" href="{{ url_for('user_profile', user_id=prof.id) }}">View</a>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">None followed yet.</p>
+    {% endif %}
+  </article>
+</section>
+
 {% elif current_user.role == 'professor' %}
 <section class="grid-3">
   <article class="metric-card">

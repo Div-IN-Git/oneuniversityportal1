@@ -18,6 +18,35 @@
 </section>
 
 <section class="card">
+  <h3>Mark Your Attendance</h3>
+  <form class="form" method="post">
+    <label>Subject</label>
+    <select name="subject" id="student-subject" required>
+      {% if subject_options %}
+        {% for subject in subject_options %}
+        <option value="{{ subject }}">{{ subject }}</option>
+        {% endfor %}
+      {% endif %}
+      <option value="__custom__">Other (type manually)</option>
+    </select>
+
+    <label>Custom Subject (only if "Other" selected)</label>
+    <input type="text" name="custom_subject" id="custom-student-subject" placeholder="e.g. Operating Systems" />
+
+    <label>Status</label>
+    <select name="status" required>
+      <option value="present">Present</option>
+      <option value="absent">Absent</option>
+    </select>
+
+    <label>Date</label>
+    <input type="date" name="class_date" />
+
+    <button class="btn" type="submit">Save My Attendance</button>
+  </form>
+</section>
+
+<section class="card">
   <h3>Subject-wise Attendance</h3>
   {% if rows %}
     {% for item in rows %}
@@ -72,7 +101,7 @@
       </select>
 
       <label>Subject</label>
-      <input type="text" name="subject" placeholder="DSA" required />
+      <input list="attendance-subjects" type="text" name="subject" placeholder="DSA" required />
 
       <label>Status</label>
       <select name="status" required>
@@ -86,6 +115,11 @@
       <label class="check-row">
         <input type="checkbox" name="send_email" />
         If shortage occurs, send email alert
+      </label>
+
+      <label class="check-row">
+        <input type="checkbox" name="publish_to_student" />
+        Publish this attendance to student view
       </label>
 
       <button class="btn" type="submit">Save Attendance</button>
@@ -109,5 +143,56 @@
     <p class="muted">No attendance records for this student yet.</p>
   {% endif %}
 </section>
+
+<section class="card">
+  <h3>Teacher Marked Entries</h3>
+  {% if teacher_entries %}
+    {% for entry in teacher_entries %}
+    <div class="list-card between">
+      <div>
+        <h4>{{ entry.subject }} - {{ entry.class_date }}</h4>
+        <p class="meta">Status: {{ entry.status|capitalize }} | Marked by {{ entry.marker_name }}</p>
+        <p class="meta">Student visibility: {% if entry.is_published %}Published{% else %}Hidden{% endif %}</p>
+      </div>
+      {% if current_user.role == 'admin' or entry.marked_by == current_user.id %}
+      <form method="post" action="{{ url_for('toggle_attendance_publish', entry_id=entry.id) }}">
+        <input type="hidden" name="publish" value="{% if entry.is_published %}0{% else %}1{% endif %}" />
+        <button class="btn btn-light" type="submit">
+          {% if entry.is_published %}Hide{% else %}Publish{% endif %}
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No teacher entries yet.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if mode != 'student' %}
+<datalist id="attendance-subjects">
+  {% if subject_options %}
+    {% for subject in subject_options %}
+    <option value="{{ subject }}"></option>
+    {% endfor %}
+  {% endif %}
+</datalist>
+{% endif %}
+
+{% if mode == 'student' %}
+<script>
+  (function () {
+    const subjectSelect = document.getElementById('student-subject');
+    const customInput = document.getElementById('custom-student-subject');
+    if (!subjectSelect || !customInput) return;
+    const syncCustom = () => {
+      customInput.required = subjectSelect.value === '__custom__';
+      if (!customInput.required) customInput.value = '';
+    };
+    subjectSelect.addEventListener('change', syncCustom);
+    syncCustom();
+  })();
+</script>
 {% endif %}
 {% endblock %}

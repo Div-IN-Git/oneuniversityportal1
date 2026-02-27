@@ -87,6 +87,7 @@ NAV_MAP = {
     "delete_announcement": "announcements",
     "attendance": "attendance",
     "send_attendance_alert": "attendance",
+    "toggle_attendance_publish": "attendance",
     "timetables": "timetables",
     "download_timetable": "timetables",
     "faculty_directory": "faculty",
@@ -1097,13 +1098,15 @@ def seed_demo_content(db: sqlite3.Connection) -> None:
             for index in range(total):
                 status = "present" if index < present else "absent"
                 class_date = f"2026-01-{(index % 28) + 1:02d}"
-                to_insert.append((student_id, subject, status, class_date, marker_id))
+                to_insert.append((student_id, subject, status, class_date, marker_id, "teacher", 1))
 
         if to_insert:
             db.executemany(
                 """
-                INSERT INTO attendance_entries (student_id, subject, status, class_date, marked_by)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO attendance_entries (
+                    student_id, subject, status, class_date, marked_by, source_type, is_published
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 to_insert,
             )
@@ -1343,6 +1346,8 @@ def init_db() -> None:
             status TEXT NOT NULL CHECK(status IN ('present', 'absent')),
             class_date TEXT NOT NULL,
             marked_by INTEGER NOT NULL,
+            source_type TEXT NOT NULL CHECK(source_type IN ('self', 'teacher')) DEFAULT 'teacher',
+            is_published INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (marked_by) REFERENCES users(id) ON DELETE CASCADE
@@ -1383,6 +1388,14 @@ def init_db() -> None:
     ensure_column(db, "previous_questions", "file_name", "TEXT")
     ensure_column(db, "previous_questions", "file_blob", "BLOB")
     ensure_column(db, "previous_questions", "file_mime", "TEXT")
+    ensure_column(db, "attendance_entries", "source_type", "TEXT NOT NULL DEFAULT 'teacher'")
+    ensure_column(db, "attendance_entries", "is_published", "INTEGER NOT NULL DEFAULT 1")
+    db.execute(
+        "UPDATE attendance_entries SET source_type = 'teacher' WHERE source_type IS NULL OR source_type = ''"
+    )
+    db.execute(
+        "UPDATE attendance_entries SET is_published = 1 WHERE is_published IS NULL"
+    )
 
     seed_demo_users(db)
 
@@ -1676,19 +1689,29 @@ def send_email(to_email: str, subject: str, body: str) -> tuple[bool, str]:
         return False, f"Email send failed: {exc}"
 
 
-def attendance_summary(student_id: int) -> list[dict[str, Any]]:
-    rows = get_db().execute(
-        """
+def attendance_summary(student_id: int, visibility: str = "teacher") -> list[dict[str, Any]]:
+    db = get_db()
+    conditions = ["student_id = ?"]
+    params: list[Any] = [student_id]
+
+    if visibility == "student":
+        conditions.append("(source_type = 'self' OR (source_type = 'teacher' AND is_published = 1))")
+    elif visibility == "teacher":
+        conditions.append("source_type = 'teacher'")
+
+    where_clause = " AND ".join(conditions)
+    rows = db.execute(
+        f"""
         SELECT
             subject,
             SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) AS present_count,
             COUNT(*) AS total_count
         FROM attendance_entries
-        WHERE student_id = ?
+        WHERE {where_clause}
         GROUP BY subject
         ORDER BY subject ASC
         """,
-        (student_id,),
+        params,
     ).fetchall()
 
     summary: list[dict[str, Any]] = []
@@ -1901,7 +1924,7 @@ def dashboard():
     db = get_db()
 
     if user["role"] == "student":
-        attendance_rows = attendance_summary(user["id"])
+        attendance_rows = attendance_summary(user["id"], visibility="student")
         overall = overall_attendance(attendance_rows)
         followed_professors = db.execute(
             """
@@ -2634,12 +2657,31 @@ def download_previous_question(question_id: int):
 def attendance():
     user = current_user()
     db = get_db()
+    subject_options_rows = db.execute(
+        """
+        SELECT subject FROM (
+            SELECT subject FROM notes
+            UNION
+            SELECT subject FROM previous_questions
+            UNION
+            SELECT subject FROM attendance_entries
+        )
+        WHERE subject IS NOT NULL AND TRIM(subject) != ''
+        ORDER BY subject
+        """
+    ).fetchall()
+    subject_options = [row["subject"] for row in subject_options_rows]
 
     if request.method == "POST":
         subject = request.form.get("subject", "").strip()
+        if subject == "__custom__":
+            subject = request.form.get("custom_subject", "").strip()
+
         status = request.form.get("status", "").strip().lower()
         class_date = request.form.get("class_date", "").strip() or str(date.today())
         send_email_flag = request.form.get("send_email") == "on"
+        is_teacher_action = user["role"] in {"professor", "admin"}
+        is_published = 1
 
         if status not in {"present", "absent"}:
             flash("Invalid attendance status.", "danger")
@@ -2649,13 +2691,16 @@ def attendance():
             flash("Please provide a valid subject.", "danger")
             return redirect(url_for("attendance"))
 
-        if user["role"] in {"professor", "admin"}:
+        if is_teacher_action:
             student_id = request.form.get("student_id", type=int)
             if not student_id:
                 flash("Please select a student.", "danger")
                 return redirect(url_for("attendance"))
+            is_published = 1 if request.form.get("publish_to_student") == "on" else 0
+            source_type = "teacher"
         else:
             student_id = user["id"]
+            source_type = "self"
 
         student = db.execute(
             "SELECT id, name, email FROM users WHERE id = ? AND role = 'student'",
@@ -2665,20 +2710,43 @@ def attendance():
             flash("Student not found.", "danger")
             return redirect(url_for("attendance"))
 
+        if not is_teacher_action:
+            # Keep a single self-mark record per subject/day for cleaner student logs.
+            db.execute(
+                """
+                DELETE FROM attendance_entries
+                WHERE student_id = ?
+                  AND subject = ?
+                  AND class_date = ?
+                  AND source_type = 'self'
+                """,
+                (student_id, subject, class_date),
+            )
+
         db.execute(
             """
-            INSERT INTO attendance_entries (student_id, subject, status, class_date, marked_by)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO attendance_entries (
+                student_id, subject, status, class_date, marked_by, source_type, is_published
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (student_id, subject, status, class_date, user["id"]),
+            (student_id, subject, status, class_date, user["id"], source_type, is_published),
         )
         db.commit()
 
-        summary_rows = attendance_summary(student_id)
+        summary_visibility = "teacher" if is_teacher_action else "student"
+        summary_rows = attendance_summary(student_id, visibility=summary_visibility)
         overall = overall_attendance(summary_rows)
-        flashed_msg = f"Attendance marked for {student['name']}."
+        if is_teacher_action:
+            if is_published:
+                flashed_msg = f"Attendance marked and published for {student['name']}."
+            else:
+                flashed_msg = f"Attendance marked for {student['name']} (draft, not published yet)."
+        else:
+            flashed_msg = f"Your attendance was marked as {status} for {subject} on {class_date}."
 
-        if overall["percent"] < ATTENDANCE_THRESHOLD:
+        can_notify_student = (not is_teacher_action) or bool(is_published)
+        if overall["percent"] < ATTENDANCE_THRESHOLD and can_notify_student:
             create_notification(
                 student_id,
                 f"Attendance warning: {overall['percent']}% overall attendance.",
@@ -2686,7 +2754,7 @@ def attendance():
             )
             db.commit()
 
-            if send_email_flag:
+            if send_email_flag and is_teacher_action:
                 ok, detail = send_shortage_email(student, summary_rows)
                 if ok:
                     flashed_msg += " Shortage email sent."
@@ -2694,12 +2762,12 @@ def attendance():
                     flashed_msg += f" Email not sent: {detail}"
 
         flash(flashed_msg, "success")
-        if user["role"] in {"professor", "admin"}:
+        if is_teacher_action:
             return redirect(url_for("attendance", student_id=student_id))
         return redirect(url_for("attendance"))
 
     if user["role"] == "student":
-        rows = attendance_summary(user["id"])
+        rows = attendance_summary(user["id"], visibility="student")
         overall = overall_attendance(rows)
         return render_page(
             "attendance.html",
@@ -2709,6 +2777,8 @@ def attendance():
             overall=overall,
             students=None,
             selected_student=None,
+            subject_options=subject_options,
+            teacher_entries=None,
         )
 
     students = db.execute(
@@ -2722,6 +2792,7 @@ def attendance():
     selected_student = None
     rows: list[dict[str, Any]] = []
     overall = {"present": 0, "total": 0, "percent": 0}
+    teacher_entries: list[sqlite3.Row] = []
 
     if selected_student_id:
         selected_student = db.execute(
@@ -2729,8 +2800,20 @@ def attendance():
             (selected_student_id,),
         ).fetchone()
         if selected_student:
-            rows = attendance_summary(selected_student_id)
+            rows = attendance_summary(selected_student_id, visibility="teacher")
             overall = overall_attendance(rows)
+            teacher_entries = db.execute(
+                """
+                SELECT ae.*, u.name AS marker_name
+                FROM attendance_entries ae
+                JOIN users u ON u.id = ae.marked_by
+                WHERE ae.student_id = ?
+                  AND ae.source_type = 'teacher'
+                ORDER BY ae.class_date DESC, ae.created_at DESC
+                LIMIT 25
+                """,
+                (selected_student_id,),
+            ).fetchall()
 
     return render_page(
         "attendance.html",
@@ -2740,6 +2823,8 @@ def attendance():
         overall=overall,
         students=students,
         selected_student=selected_student,
+        subject_options=subject_options,
+        teacher_entries=teacher_entries,
     )
 
 
@@ -2769,6 +2854,49 @@ def send_attendance_alert(student_id: int):
         flash(detail, "warning")
 
     return redirect(url_for("attendance", student_id=student_id))
+
+
+@app.route("/attendance/entry/<int:entry_id>/publish", methods=["POST"])
+@role_required("professor", "admin")
+def toggle_attendance_publish(entry_id: int):
+    user = current_user()
+    db = get_db()
+    row = db.execute(
+        """
+        SELECT id, student_id, marked_by, source_type, is_published
+        FROM attendance_entries
+        WHERE id = ?
+        """,
+        (entry_id,),
+    ).fetchone()
+
+    if not row:
+        abort(404)
+
+    if row["source_type"] != "teacher":
+        abort(400)
+
+    if user["role"] != "admin" and row["marked_by"] != user["id"]:
+        abort(403)
+
+    publish_value = 1 if request.form.get("publish") == "1" else 0
+    db.execute(
+        "UPDATE attendance_entries SET is_published = ? WHERE id = ?",
+        (publish_value, entry_id),
+    )
+    if publish_value:
+        create_notification(
+            row["student_id"],
+            "A teacher has published an attendance update for your record.",
+            url_for("attendance"),
+        )
+    db.commit()
+
+    flash(
+        "Attendance entry published to student view." if publish_value else "Attendance entry hidden from student view.",
+        "success",
+    )
+    return redirect(url_for("attendance", student_id=row["student_id"]))
 
 
 @app.route("/timetables", methods=["GET", "POST"])

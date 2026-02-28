@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<section class="grid-2">
+  <article class="card">
+    <h3>Generate Exam-Ready Questions</h3>
+    <form class="form" method="post">
+      <input type="hidden" name="action" value="questions" />
+
+      <label>Source Type</label>
+      <select name="source_type" id="source_type">
+        <option value="syllabus">Syllabus Text</option>
+        <option value="note">From Uploaded Note</option>
+      </select>
+
+      <div id="note_picker" class="hidden">
+        <label>Select Note</label>
+        <select name="note_id">
+          {% for note in notes %}
+          <option value="{{ note.id }}">{{ note.title }} ({{ note.subject }} | {{ note.professor_name }})</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div id="syllabus_box">
+        <label>Syllabus / Topic Content</label>
+        <textarea name="syllabus_text" rows="10" placeholder="Paste syllabus modules, key formulas, concepts..."></textarea>
+      </div>
+
+      <button class="btn" type="submit">Generate</button>
+    </form>
+  </article>
+
+  <article class="card">
+    <h3>Generated Questions</h3>
+    {% if generated_questions %}
+    <ol>
+      {% for q in generated_questions %}
+      <li>{{ q }}</li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="muted">No generated questions yet.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section class="card">
+  <h3>AI PDF Summary</h3>
+  {% if summarizer_ready %}
+  <p class="meta">Upload a PDF and generate a model summary from <code>my_exam_summarizer</code>.</p>
+  {% else %}
+  <p class="text-danger">
+    AI summarizer is unavailable.
+    {% if summarizer_error %}{{ summarizer_error }}{% endif %}
+  </p>
+  {% endif %}
+
+  <form class="form" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="action" value="summary" />
+    <label>Upload PDF</label>
+    <input type="file" name="summary_pdf" accept=".pdf" required />
+    <button class="btn" type="submit" {% if not summarizer_ready %}disabled{% endif %}>Generate Summary</button>
+  </form>
+
+  {% if generated_summary %}
+  <div class="list-card">
+    <p class="meta">
+      Source: {{ summary_file_name or 'PDF' }}
+      {% if extracted_char_count %}| Extracted text: {{ extracted_char_count }} chars{% endif %}
+    </p>
+    <p style="white-space: pre-line;">{{ generated_summary }}</p>
+  </div>
+  {% else %}
+  <p class="muted">No summary generated yet.</p>
+  {% endif %}
+</section>
+
+<script>
+  const sourceType = document.getElementById('source_type');
+  const notePicker = document.getElementById('note_picker');
+  const syllabusBox = document.getElementById('syllabus_box');
+
+  function toggleSource() {
+    const useNote = sourceType.value === 'note';
+    notePicker.classList.toggle('hidden', !useNote);
+    syllabusBox.classList.toggle('hidden', useNote);
+  }
+
+  sourceType.addEventListener('change', toggleSource);
+  toggleSource();
+</script>
+{% endblock %}

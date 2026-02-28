@@ -166,21 +166,74 @@ def extract_text_with_pypdf(pdf_blob: bytes) -> str:
 
 
 def extract_text_with_ocr(pdf_blob: bytes) -> str:
-    try:
-        import pdfplumber
-    except Exception as exc:
-        raise RuntimeError(f"Missing pdfplumber: {exc}. Run: pip install pdfplumber") from exc
+    """Use Groq vision to OCR PDF pages that pdfplumber couldn't read."""
+    if not GROQ_API_KEY:
+        raise RuntimeError("Groq API key not set — cannot perform OCR.")
 
     try:
-        with pdfplumber.open(io.BytesIO(pdf_blob)) as pdf:
-            texts = []
-            for page in pdf.pages:
-                text = page.extract_text() or ""
-                if text.strip():
-                    texts.append(text.strip())
-            return "\n\n".join(texts)
+        from pdf2image import convert_from_bytes
+    except ImportError:
+        raise RuntimeError("Missing pdf2image. Run: pip install pdf2image")
+
+    try:
+        from PIL import Image
+        import base64
+        import io as _io
+    except ImportError:
+        raise RuntimeError("Missing Pillow. Run: pip install Pillow")
+
+    try:
+        pages = convert_from_bytes(pdf_blob, dpi=150, fmt="jpeg", first_page=1, last_page=8)
     except Exception as exc:
-        raise RuntimeError(f"pdfplumber failed: {exc}") from exc
+        raise RuntimeError(f"Could not convert PDF to images: {exc}")
+
+    from groq import Groq
+    client = Groq(api_key=GROQ_API_KEY)
+
+    all_text: list[str] = []
+    for i, page_img in enumerate(pages):
+        # Resize to reduce token usage
+        page_img.thumbnail((1200, 1600), Image.LANCZOS)
+
+        buf = _io.BytesIO()
+        page_img.save(buf, format="JPEG", quality=85)
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+        try:
+            response = client.chat.completions.create(
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{b64}",
+                                },
+                            },
+                            {
+                                "type": "text",
+                                "text": (
+                                    "Extract ALL text from this page exactly as it appears. "
+                                    "Preserve headings, bullet points, and structure. "
+                                    "Output only the extracted text, nothing else."
+                                ),
+                            },
+                        ],
+                    }
+                ],
+                max_tokens=2048,
+            )
+            page_text = response.choices[0].message.content.strip()
+            if page_text:
+                all_text.append(page_text)
+        except Exception as exc:
+            # Skip pages that fail, continue with rest
+            app.logger.warning(f"OCR failed for page {i+1}: {exc}")
+            continue
+
+    return "\n\n".join(all_text)
 
 
 def extract_text_from_pdf_blob(pdf_blob: bytes) -> str:

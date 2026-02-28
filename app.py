@@ -27,6 +27,9 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
+from dotenv import load_dotenv
+load_dotenv()
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IS_VERCEL = bool(os.environ.get("VERCEL"))
 DB_PATH = os.environ.get(
@@ -35,7 +38,7 @@ DB_PATH = os.environ.get(
 )
 
 ATTENDANCE_THRESHOLD = 75
-MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 PDF_EXTENSIONS = {".pdf"}
 TIMETABLE_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
@@ -103,6 +106,13 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_MODEL = "llama-3.3-70b-versatile"
+SUMMARY_CHUNK_CHARS = 2600
+SUMMARY_CHUNK_OVERLAP = 240
+OCR_MIN_TEXT_CHARS = 600
+OCR_MAX_PAGES = int(os.environ.get("OCR_MAX_PAGES", "12"))
+OCR_RENDER_SCALE = float(os.environ.get("OCR_RENDER_SCALE", "2.0"))
 
 def get_db() -> sqlite3.Connection:
     if "db" not in g:
@@ -127,6 +137,139 @@ def table_columns(db: sqlite3.Connection, table_name: str) -> set[str]:
 def ensure_column(db: sqlite3.Connection, table_name: str, column_name: str, column_sql: str) -> None:
     if column_name not in table_columns(db, table_name):
         db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+
+
+def load_exam_summarizer() -> tuple[bool, str | None]:
+    if GROQ_API_KEY:
+        return True, None
+    return False, "Groq API key not set. Add GROQ_API_KEY to your .env file."
+
+
+def extract_text_with_pypdf(pdf_blob: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+    except Exception as exc:
+        raise RuntimeError(f"Missing PDF parser dependency: {exc}. Install pypdf.") from exc
+
+    reader = PdfReader(io.BytesIO(pdf_blob))
+    page_texts: list[str] = []
+    for page in reader.pages:
+        page_text = page.extract_text() or ""
+        page_text = page_text.strip()
+        if page_text:
+            page_texts.append(page_text)
+
+    merged = "\n\n".join(page_texts)
+    merged = re.sub(r"[ \t]+", " ", merged)
+    merged = re.sub(r"\n{3,}", "\n\n", merged).strip()
+    return merged
+
+
+def extract_text_with_ocr(pdf_blob: bytes) -> str:
+    try:
+        import pdfplumber
+    except Exception as exc:
+        raise RuntimeError(f"Missing pdfplumber: {exc}. Run: pip install pdfplumber") from exc
+
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_blob)) as pdf:
+            texts = []
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                if text.strip():
+                    texts.append(text.strip())
+            return "\n\n".join(texts)
+    except Exception as exc:
+        raise RuntimeError(f"pdfplumber failed: {exc}") from exc
+
+
+def extract_text_from_pdf_blob(pdf_blob: bytes) -> str:
+    direct_text = extract_text_with_pypdf(pdf_blob)
+    if len(direct_text) >= OCR_MIN_TEXT_CHARS:
+        return direct_text
+
+    ocr_error: str | None = None
+    ocr_text = ""
+    try:
+        ocr_text = extract_text_with_ocr(pdf_blob)
+    except RuntimeError as exc:
+        ocr_error = str(exc)
+
+    if ocr_text:
+        if direct_text:
+            merged = f"{direct_text}\n\n{ocr_text}".strip()
+            return re.sub(r"\n{3,}", "\n\n", merged)
+        return ocr_text
+
+    if direct_text:
+        return direct_text
+
+    if ocr_error:
+        raise RuntimeError(ocr_error)
+    return ""
+
+
+def chunk_text_for_summary(raw_text: str) -> list[str]:
+    text = raw_text.strip()
+    if not text:
+        return []
+    if len(text) <= SUMMARY_CHUNK_CHARS:
+        return [text]
+
+    chunks: list[str] = []
+    start = 0
+    size = SUMMARY_CHUNK_CHARS
+    overlap = SUMMARY_CHUNK_OVERLAP
+    text_len = len(text)
+
+    while start < text_len:
+        end = min(start + size, text_len)
+        if end < text_len:
+            split_at = text.rfind(".", start, end)
+            if split_at > start + 300:
+                end = split_at + 1
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        if end >= text_len:
+            break
+        start = max(end - overlap, start + 1)
+
+    return chunks[:12]
+
+
+def summarize_text_with_model(raw_text: str) -> str:
+    if not GROQ_API_KEY:
+        raise RuntimeError("Groq API key not configured.")
+    try:
+        from groq import Groq
+        client = Groq(api_key=GROQ_API_KEY)
+        truncated = raw_text[:6000]
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert university exam preparation assistant. "
+                        "When given study material, produce a concise summary "
+                        "followed by 8 high-quality exam questions. "
+                        "Format your response as:\n"
+                        "SUMMARY:\n<2-3 paragraph summary>\n\n"
+                        "EXAM QUESTIONS:\n1. <question>\n2. <question>\n..."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Summarize this study material and generate exam questions:\n\n{truncated}",
+                },
+            ],
+            max_tokens=1024,
+            temperature=0.4,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as exc:
+        raise RuntimeError(f"Groq API error: {exc}") from exc
 
 
 def generate_university_id(role: str, db: sqlite3.Connection) -> str:
@@ -591,6 +734,77 @@ def seed_demo_content(db: sqlite3.Connection) -> None:
                 (student_id, prof_id),
             )
 
+    def build_rich_note_content(
+        prof_email: str,
+        title: str,
+        subject: str,
+        content: str,
+        important: int,
+        bullets: list[str],
+    ) -> tuple[str, list[str]]:
+        faculty_name = prof_email.split("@")[0].replace(".", " ").title()
+        expanded_sections: list[str] = [
+            f"Faculty note metadata: Subject={subject}, Module={title}, Prepared by {faculty_name}.",
+            (
+                "Objective: build exam-ready understanding with concept clarity, derivations where needed, "
+                "and practical application examples."
+            ),
+            f"Core module overview: {content}",
+            (
+                "Study plan: 1) read definitions, 2) derive or trace process, 3) solve one numerical/case, "
+                "4) write compact revision notes."
+            ),
+        ]
+
+        for idx, point in enumerate(bullets, start=1):
+            expanded_sections.append(
+                (
+                    f"Key concept {idx}: {point} "
+                    "Include definition, formula or algorithmic step, and one probable exam framing."
+                )
+            )
+
+        expanded_sections.extend(
+            [
+                (
+                    "Likely 2-mark asks: list core definitions, assumptions, and one-line differences "
+                    "between closely related terms."
+                ),
+                (
+                    "Likely 5-mark asks: explain working flow with labeled diagram/pseudocode and highlight complexity "
+                    "or trade-offs."
+                ),
+                (
+                    "Likely 10-mark asks: integrated case question combining concept explanation, method selection, "
+                    "worked example, and final interpretation."
+                ),
+                (
+                    "Common mistakes to avoid: skipping constraints/assumptions, missing units/notation, "
+                    "and writing conclusions without intermediate reasoning."
+                ),
+                (
+                    "Rapid revision block: 10 keywords, 5 must-remember formulas/rules, 3 common diagrams, "
+                    "and 2 previous-year patterns."
+                ),
+                (
+                    "Answer quality checklist: correct terminology, structured headings, readable steps, and "
+                    "one-line final takeaway for every long answer."
+                ),
+                (
+                    "Self-test prompt bank: convert each topic into one conceptual, one numerical, and one "
+                    "application-style question before exam day."
+                ),
+            ]
+        )
+
+        if important:
+            expanded_sections.append(
+                "Professor priority tag: this module has high exam relevance and should be revised in every final revision cycle."
+            )
+
+        rich_content = "\n".join(expanded_sections)
+        return rich_content, expanded_sections
+
     def ensure_note(
         prof_email: str,
         title: str,
@@ -602,18 +816,33 @@ def seed_demo_content(db: sqlite3.Connection) -> None:
         prof_id = ids.get(prof_email)
         if not prof_id:
             return
+        rich_content, rich_sections = build_rich_note_content(
+            prof_email=prof_email,
+            title=title,
+            subject=subject,
+            content=content,
+            important=important,
+            bullets=bullets,
+        )
         existing = db.execute(
-            "SELECT id, file_blob FROM notes WHERE professor_id = ? AND title = ?",
+            "SELECT id, file_blob, content FROM notes WHERE professor_id = ? AND title = ?",
             (prof_id, title),
         ).fetchone()
         pdf_blob = generate_document_pdf(
             title=title,
             subtitle=f"{subject} | Prepared by {prof_email.split('@')[0].replace('.', ' ').title()}",
-            paragraphs=bullets,
+            paragraphs=rich_sections,
             footer="University Unified Portal - Study Material",
         )
         if existing:
-            if not existing["file_blob"]:
+            current_content = (existing["content"] or "").strip()
+            file_blob = existing["file_blob"] or b""
+            needs_refresh = (
+                not file_blob
+                or len(file_blob) < 2200
+                or len(current_content) < 900
+            )
+            if needs_refresh:
                 db.execute(
                     """
                     UPDATE notes
@@ -624,7 +853,7 @@ def seed_demo_content(db: sqlite3.Connection) -> None:
                         f"{clean_name(title)}.pdf",
                         pdf_blob,
                         "application/pdf",
-                        content,
+                        rich_content,
                         subject,
                         important,
                         existing["id"],
@@ -643,7 +872,7 @@ def seed_demo_content(db: sqlite3.Connection) -> None:
                 prof_id,
                 title,
                 subject,
-                content,
+                rich_content,
                 important,
                 f"{clean_name(title)}.pdf",
                 pdf_blob,
@@ -825,6 +1054,72 @@ def seed_demo_content(db: sqlite3.Connection) -> None:
     for seed in note_seeds:
         ensure_note(*seed)
 
+    def build_rich_paper_content(
+        subject: str,
+        exam_year: str,
+        title: str,
+        content: str,
+        important_questions: str,
+        paper_sections: list[str],
+    ) -> tuple[str, list[str]]:
+        important_lines = [line.strip(" -\t") for line in important_questions.splitlines() if line.strip()]
+
+        expanded_sections: list[str] = [
+            f"Exam metadata: Subject={subject}, Paper={title}, Session={exam_year}, Duration=3 hours, Max Marks=70.",
+            "Question paper pattern: Section A (short conceptual), Section B (descriptive), Section C (numerical/case based).",
+            (
+                "Rubric guidance: clear definition (20%), correct derivation/logic (35%), relevant example or diagram "
+                "(25%), and final interpretation/conclusion (20%)."
+            ),
+            f"Official paper summary: {content}",
+        ]
+
+        expanded_sections.extend(paper_sections)
+
+        if important_lines:
+            expanded_sections.append(
+                "Professor-highlighted recurring questions and expected answer points for targeted revision:"
+            )
+            for idx, item in enumerate(important_lines, start=1):
+                expanded_sections.append(
+                    (
+                        f"Important Q{idx}: {item}. "
+                        "Expected answer should include core concept, one worked example, and one common mistake to avoid."
+                    )
+                )
+
+        expanded_sections.extend(
+            [
+                (
+                    "Unit-wise readiness plan: Unit 1 fundamentals, Unit 2 derivations, Unit 3 analytical problems, "
+                    "Unit 4 application/case questions, Unit 5 quick-revision formulas."
+                ),
+                (
+                    "Answer-writing strategy: begin with keyword definition, draw labeled diagram where relevant, "
+                    "show intermediate calculation steps, and end with one-line inference."
+                ),
+                (
+                    "Common examiner expectations: precise terminology, mathematically correct notation, "
+                    "and concise but complete structure under time constraints."
+                ),
+                (
+                    "Practice drill set: 3 two-mark concept checks, 3 five-mark derivation/problem questions, "
+                    "and 2 ten-mark integrated questions from mixed units."
+                ),
+                (
+                    "Time allocation recommendation: 20 minutes for Section A, 65 minutes for Section B, "
+                    "75 minutes for Section C, and final 20 minutes for revision."
+                ),
+                (
+                    "Post-practice review checklist: verify assumptions, re-check final values and units, "
+                    "and ensure each answer addresses the action verb in the question."
+                ),
+            ]
+        )
+
+        rich_content = "\n".join(expanded_sections)
+        return rich_content, expanded_sections
+
     def ensure_question_paper(
         uploader_email: str,
         subject: str,
@@ -837,19 +1132,40 @@ def seed_demo_content(db: sqlite3.Connection) -> None:
         uploader_id = ids.get(uploader_email)
         if not uploader_id:
             return
+        rich_content, rich_sections = build_rich_paper_content(
+            subject=subject,
+            exam_year=exam_year,
+            title=title,
+            content=content,
+            important_questions=important_questions,
+            paper_sections=paper_sections,
+        )
         existing = db.execute(
-            "SELECT id, file_blob FROM previous_questions WHERE uploader_id = ? AND title = ? AND exam_year = ?",
+            """
+            SELECT id, file_blob, content, important_questions, subject
+            FROM previous_questions
+            WHERE uploader_id = ? AND title = ? AND exam_year = ?
+            """,
             (uploader_id, title, exam_year),
         ).fetchone()
 
         pdf_blob = generate_document_pdf(
             title=title,
             subtitle=f"{subject} | {exam_year} | Previous Year Question Paper",
-            paragraphs=paper_sections,
+            paragraphs=rich_sections,
             footer="University Unified Portal - Question Paper Archive",
         )
         if existing:
-            if not existing["file_blob"]:
+            current_content = (existing["content"] or "").strip()
+            current_important = (existing["important_questions"] or "").strip()
+            file_blob = existing["file_blob"] or b""
+            needs_refresh = (
+                not file_blob
+                or len(file_blob) < 2200
+                or len(current_content) < 800
+                or len(current_important) < 30
+            )
+            if needs_refresh:
                 db.execute(
                     """
                     UPDATE previous_questions
@@ -860,7 +1176,7 @@ def seed_demo_content(db: sqlite3.Connection) -> None:
                         f"{clean_name(title)}.pdf",
                         pdf_blob,
                         "application/pdf",
-                        content,
+                        rich_content,
                         important_questions,
                         subject,
                         existing["id"],
@@ -880,7 +1196,7 @@ def seed_demo_content(db: sqlite3.Connection) -> None:
                 subject,
                 exam_year,
                 title,
-                content,
+                rich_content,
                 important_questions,
                 uploader_id,
                 f"{clean_name(title)}.pdf",
@@ -1527,55 +1843,77 @@ def read_uploaded_file(field_name: str, allowed_extensions: set[str]) -> tuple[s
 
 
 def build_exam_questions(raw_text: str) -> list[str]:
-    text = re.sub(r"\s+", " ", raw_text).strip()
+    text = raw_text.strip()
     if not text:
         return []
 
-    sentences = [
-        s.strip()
-        for s in re.split(r"(?<=[.!?])\s+", text)
-        if len(s.strip()) >= 20
-    ]
+    if GROQ_API_KEY:
+        try:
+            from groq import Groq
+            client = Groq(api_key=GROQ_API_KEY)
+            response = client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a university exam question generator. "
+                            "Generate exactly 8 specific, high-quality exam questions "
+                            "based on the provided study content. "
+                            "Questions should be suitable for a university semester exam. "
+                            "Return ONLY a numbered list of questions, nothing else. "
+                            "No preamble, no explanations."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Generate 8 exam questions from this content:\n\n{text[:4000]}",
+                    },
+                ],
+                max_tokens=512,
+                temperature=0.5,
+            )
+            raw = response.choices[0].message.content.strip()
+            questions = []
+            for line in raw.split("\n"):
+                line = line.strip().lstrip("0123456789.)- ")
+                if len(line) > 15:
+                    questions.append(line)
+            if questions:
+                return questions[:10]
+        except Exception:
+            pass
 
+    # Fallback heuristic if Groq fails
+    extended_stops = STOP_WORDS | {
+        "concept", "concepts", "definition", "definitions", "include",
+        "explain", "understand", "example", "examples", "using", "given",
+        "based", "answer", "discuss", "describe", "mention", "following",
+        "write", "state", "derive", "prove", "module", "chapter", "topics",
+        "topic", "notes", "prepared", "faculty", "objective", "overview",
+        "metadata", "program", "study", "course", "university", "college",
+    }
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if len(s.strip()) >= 30]
     word_counts: dict[str, int] = {}
-    for word in re.findall(r"[A-Za-z]{5,}", text.lower()):
-        if word in STOP_WORDS:
-            continue
-        word_counts[word] = word_counts.get(word, 0) + 1
-
-    top_words = [
-        item[0] for item in sorted(word_counts.items(), key=lambda p: p[1], reverse=True)[:8]
-    ]
-
-    questions: list[str] = []
-    for word in top_words[:4]:
-        questions.append(f"Define {word} and explain it with one practical example.")
-
+    for word in re.findall(r"[A-Za-z]{7,}", text.lower()):
+        if word not in extended_stops:
+            word_counts[word] = word_counts.get(word, 0) + 1
+    top_words = [w for w, _ in sorted(word_counts.items(), key=lambda p: p[1], reverse=True)[:8]]
+    questions = []
+    for word in top_words[:3]:
+        questions.append(f"Explain '{word}' with its significance and a practical example.")
     if len(top_words) >= 2:
-        questions.append(
-            f"Compare {top_words[0]} and {top_words[1]} with key differences and exam use-cases."
-        )
-
+        questions.append(f"Compare '{top_words[0]}' and '{top_words[1]}' with key differences.")
     for sentence in sentences[:3]:
-        short = sentence[:120].rstrip(".")
-        questions.append(f"Write a short note on: {short}.")
-
-    questions.extend(
-        [
-            "Create a 5-mark answer from this topic using concept, diagram, and one example.",
-            "Draft one likely semester exam question and provide the ideal model answer.",
-            "List common mistakes students make in this topic and how to avoid them.",
-        ]
-    )
-
-    unique_questions: list[str] = []
-    seen = set()
-    for q in questions:
-        if q not in seen:
-            unique_questions.append(q)
-            seen.add(q)
-
-    return unique_questions[:10]
+        if len(sentence) >= 40:
+            questions.append(f"Write a detailed note on: {sentence[:130].rstrip('.,')}")
+    questions += [
+        "Create a 5-mark answer on the most important concept in this topic with a diagram.",
+        "Draft one likely semester exam question and write the model answer.",
+        "List the key formulas or algorithms in this topic and explain when to use each.",
+    ]
+    seen: set[str] = set()
+    return [q for q in questions if not (q in seen or seen.add(q))][:10]  # type: ignore
 
 
 def create_notification(user_id: int, message: str, link: str | None = None) -> None:
@@ -3122,8 +3460,64 @@ def exam_ready():
     ).fetchall()
 
     generated_questions: list[str] = []
+    generated_summary = ""
+    summary_file_name = ""
+    extracted_char_count = 0
+    summarizer_ready, summarizer_error = load_exam_summarizer()
 
     if request.method == "POST":
+        action = request.form.get("action", "questions").strip().lower()
+        if action == "summary":
+            file_name, file_blob, _file_mime, file_error = read_uploaded_file("summary_pdf", PDF_EXTENSIONS)
+            if file_error:
+                flash(file_error, "danger")
+            elif not file_blob:
+                flash("Please upload a PDF file first.", "danger")
+            elif not summarizer_ready:
+                flash(
+                    summarizer_error
+                    or "AI summarizer model could not be loaded on the server.",
+                    "danger",
+                )
+            else:
+                try:
+                    source_text = extract_text_from_pdf_blob(file_blob)
+                except RuntimeError as exc:
+                    flash(str(exc), "danger")
+                    source_text = ""
+
+                if not source_text or len(source_text) < 80:
+                    flash(
+                        "Could not extract enough text from PDF. If the PDF is scanned images, OCR is required first.",
+                        "danger",
+                    )
+                else:
+                    summary_file_name = file_name or "uploaded.pdf"
+                    extracted_char_count = len(source_text)
+                    try:
+                        generated_summary = summarize_text_with_model(source_text)
+                    except RuntimeError as exc:
+                        flash(str(exc), "danger")
+                    except Exception as exc:  # pragma: no cover
+                        flash(f"Summary generation failed: {exc}", "danger")
+
+                    if generated_summary:
+                        flash("AI summary generated successfully.", "success")
+                    else:
+                        flash("Model did not return summary text for this PDF.", "warning")
+
+            return render_page(
+                "exam_ready.html",
+                page_title="Exam Ready Questions",
+                notes=source_notes,
+                generated_questions=generated_questions,
+                generated_summary=generated_summary,
+                summary_file_name=summary_file_name,
+                extracted_char_count=extracted_char_count,
+                summarizer_ready=summarizer_ready,
+                summarizer_error=summarizer_error,
+            )
+
         source_type = request.form.get("source_type", "syllabus")
         source_ref_id = None
         source_text = ""
@@ -3138,6 +3532,11 @@ def exam_ready():
                     page_title="Exam Ready Questions",
                     notes=source_notes,
                     generated_questions=generated_questions,
+                    generated_summary=generated_summary,
+                    summary_file_name=summary_file_name,
+                    extracted_char_count=extracted_char_count,
+                    summarizer_ready=summarizer_ready,
+                    summarizer_error=summarizer_error,
                 )
 
             source_ref_id = note["id"]
@@ -3153,6 +3552,11 @@ def exam_ready():
                 page_title="Exam Ready Questions",
                 notes=source_notes,
                 generated_questions=[],
+                generated_summary=generated_summary,
+                summary_file_name=summary_file_name,
+                extracted_char_count=extracted_char_count,
+                summarizer_ready=summarizer_ready,
+                summarizer_error=summarizer_error,
             )
 
         if user["role"] == "student":
@@ -3176,6 +3580,11 @@ def exam_ready():
         page_title="Exam Ready Questions",
         notes=source_notes,
         generated_questions=generated_questions,
+        generated_summary=generated_summary,
+        summary_file_name=summary_file_name,
+        extracted_char_count=extracted_char_count,
+        summarizer_ready=summarizer_ready,
+        summarizer_error=summarizer_error,
     )
 
 
@@ -3419,7 +3828,6 @@ def too_large(_error):
 
 with app.app_context():
     init_db()
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5050"))

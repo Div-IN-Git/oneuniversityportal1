@@ -54,10 +54,22 @@ For production persistence, switch from SQLite to an external database/storage.
 
 ```bash
 pip install -r requirements.txt
+pip install torch
 python app.py
 ```
 
 Open: [http://localhost:5050](http://localhost:5050)
+
+## AI PDF summary model
+
+- The app loads a local summarizer model from `my_exam_summarizer/` once at server startup.
+- Summary flow: upload PDF -> text extraction (native + OCR fallback) -> model inference -> human-readable summary output.
+- If summary is unavailable, install missing dependencies (`transformers`, `pypdf`, `torch`) and restart.
+- If you see a protobuf/tokenizer load error, also install `protobuf` and `sentencepiece`.
+- OCR for scanned PDFs uses `pytesseract` + `pypdfium2` + `Pillow`; install the system Tesseract binary too.
+- If Tesseract is installed in a custom location, set `TESSERACT_CMD` (for example `/opt/homebrew/bin/tesseract`).
+- Current app upload limit is set to `100 MB` per file.
+- Large local models and `torch` may not fit typical Vercel serverless limits; local runtime or external inference service is recommended for this feature.
 
 ## Optional email setup (for announcements/attendance alerts)
 

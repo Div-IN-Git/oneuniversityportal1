@@ -3826,6 +3826,198 @@ def change_role(user_id: int):
     flash("User role updated.", "success")
     return redirect(url_for("dashboard"))
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Paste BOTH routes into app.py just before your error handlers at the bottom.
+# They handle:
+#   POST /exam-ready/chunk-upload  — receives one raw PDF chunk, extracts text, summarises it
+#   POST /exam-ready/merge-summary — receives all chunk summaries, merges + generates questions
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/exam-ready/chunk-upload", methods=["POST"])
+@login_required
+def chunk_upload():
+    """
+    Receives a single PDF chunk (raw bytes slice) from the browser.
+    Extracts whatever text it can, summarises it with Groq, returns JSON.
+    """
+    if not GROQ_API_KEY:
+        return jsonify({"error": "Groq API key not configured."}), 500
+
+    uploaded = request.files.get("summary_pdf")
+    if not uploaded:
+        return jsonify({"error": "No file in request."}), 400
+
+    chunk_index  = int(request.form.get("chunk_index",  0))
+    total_chunks = int(request.form.get("total_chunks", 1))
+
+    pdf_bytes = uploaded.read()
+    if len(pdf_bytes) < 10:
+        return jsonify({"error": "Empty chunk received."}), 400
+
+    # ── Extract text from this chunk ──────────────────────────────────────────
+    # A raw slice of a PDF is not a valid PDF on its own.
+    # So we try pypdf first (may partially work on first chunk),
+    # then fall back to reading it as plain bytes and pulling any visible text.
+    raw_text = ""
+
+    # Attempt 1: pypdf (works well for first chunk which has the PDF header)
+    try:
+        raw_text = extract_text_with_pypdf(pdf_bytes)
+    except Exception:
+        pass
+
+    # Attempt 2: pdfplumber
+    if len(raw_text) < 100:
+        try:
+            import pdfplumber, io as _io
+            with pdfplumber.open(_io.BytesIO(pdf_bytes)) as pdf:
+                pages_text = [p.extract_text() or "" for p in pdf.pages]
+                raw_text = "\n\n".join(t for t in pages_text if t.strip())
+        except Exception:
+            pass
+
+    # Attempt 3: decode bytes and extract printable ASCII as last resort
+    if len(raw_text) < 100:
+        try:
+            decoded = pdf_bytes.decode("latin-1", errors="replace")
+            import re as _re
+            # Pull runs of printable characters (words, sentences)
+            words = _re.findall(r'[A-Za-z][A-Za-z0-9 ,.\-:;\'\"()\n]{10,}', decoded)
+            raw_text = " ".join(words)
+        except Exception:
+            pass
+
+    if len(raw_text.strip()) < 80:
+        # Not enough text — skip this chunk silently rather than failing
+        return jsonify({
+            "chunk_index":   chunk_index,
+            "chunk_summary": "",
+            "warning":       f"Chunk {chunk_index+1} had too little text to summarise."
+        })
+
+    # ── Summarise with Groq ───────────────────────────────────────────────────
+    try:
+        from groq import Groq
+        client = Groq(api_key=GROQ_API_KEY)
+
+        truncated = raw_text[:4000]  # stay well under token limit
+
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a university exam preparation assistant. "
+                        "Summarise the provided study material concisely. "
+                        "Focus on key concepts, definitions, and exam-important points. "
+                        "Output only the summary, no preamble."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Summarise this study material "
+                        f"(chunk {chunk_index+1} of {total_chunks}):\n\n{truncated}"
+                    ),
+                },
+            ],
+            max_tokens=500,
+            temperature=0.3,
+        )
+        chunk_summary = response.choices[0].message.content.strip()
+
+    except Exception as exc:
+        return jsonify({"error": f"Groq API error on chunk {chunk_index+1}: {exc}"}), 500
+
+    return jsonify({
+        "chunk_index":   chunk_index,
+        "chunk_summary": chunk_summary,
+    })
+
+
+@app.route("/exam-ready/merge-summary", methods=["POST"])
+@login_required
+def merge_summary():
+    """
+    Receives all chunk summaries as JSON, merges them into a final summary,
+    then generates 8 exam questions. Returns JSON.
+    """
+    if not GROQ_API_KEY:
+        return jsonify({"error": "Groq API key not configured."}), 500
+
+    body = request.get_json(silent=True) or {}
+    summaries: list = body.get("summaries", [])
+    summaries = [s for s in summaries if s and s.strip()]
+
+    if not summaries:
+        return jsonify({"error": "No summaries received to merge."}), 400
+
+    try:
+        from groq import Groq
+        client = Groq(api_key=GROQ_API_KEY)
+
+        # ── Step 1: merge chunk summaries ─────────────────────────────────────
+        if len(summaries) == 1:
+            final_summary = summaries[0]
+        else:
+            combined = "\n\n---\n\n".join(summaries)
+            merge_resp = client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a university exam preparation assistant. "
+                            "You will receive multiple chunk summaries of a study document. "
+                            "Combine them into one coherent, well-structured summary. "
+                            "Remove repetition. Focus on exam-important content."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Combine these chunk summaries:\n\n{combined[:6000]}",
+                    },
+                ],
+                max_tokens=800,
+                temperature=0.3,
+            )
+            final_summary = merge_resp.choices[0].message.content.strip()
+
+        # ── Step 2: generate exam questions ───────────────────────────────────
+        q_resp = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a university exam question generator. "
+                        "Generate exactly 8 specific, exam-quality questions. "
+                        "Return ONLY a numbered list, one question per line. No preamble."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Generate 8 exam questions from this summary:\n\n{final_summary[:4000]}",
+                },
+            ],
+            max_tokens=512,
+            temperature=0.5,
+        )
+        questions_raw = q_resp.choices[0].message.content.strip()
+        questions = [
+            line.strip().lstrip("0123456789.)-").strip()
+            for line in questions_raw.splitlines()
+            if len(line.strip()) > 15
+        ]
+
+    except Exception as exc:
+        return jsonify({"error": f"Groq API error during merge: {exc}"}), 500
+
+    return jsonify({
+        "summary":   final_summary,
+        "questions": questions,
+    })
 
 @app.route("/admin/user/<int:user_id>/delete", methods=["POST"])
 @role_required("admin")

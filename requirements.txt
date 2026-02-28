@@ -3,5 +3,5 @@ groq
 python-dotenv
 pdfplumber
 pypdf
-pytesseract
 Pillow
+pdf2image

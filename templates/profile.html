@@ -1,139 +1,974 @@
 {% extends 'base.html' %}
 {% block app_content %}
+
 {% if own_profile %}
-<section class="card">
-  <h3>My Profile</h3>
-  <form class="form" method="post" enctype="multipart/form-data">
-    <label>University ID</label>
-    <input type="text" value="{{ profile_user.university_id }}" disabled />
-
-    <label>Full Name</label>
-    <input type="text" name="name" value="{{ profile_user.name or '' }}" required />
-
-    <label>Phone</label>
-    <input type="text" name="phone" value="{{ profile_user.phone or '' }}" />
-
-    <label>Photo URL</label>
-    <input type="url" name="photo_url" value="{{ profile_user.photo_url or '' }}" placeholder="https://..." />
-
-    <label>Upload Profile Photo</label>
-    <input type="file" name="photo_file" accept=".png,.jpg,.jpeg,.webp" />
-
+{# ═══════════════════════════════════════════════
+   OWN PROFILE — Edit Form (own profile stays clean)
+═══════════════════════════════════════════════ #}
+<div class="prof-edit-wrap">
+  <div class="prof-edit-header">
     {% if profile_user.photo_blob %}
-    <img class="avatar" src="{{ url_for('user_photo', user_id=profile_user.id) }}" alt="{{ profile_user.name }}" />
+    <img class="prof-edit-avatar" src="{{ url_for('user_photo', user_id=profile_user.id) }}" alt="{{ profile_user.name }}" />
     {% elif profile_user.photo_url %}
-    <img class="avatar" src="{{ profile_user.photo_url }}" alt="{{ profile_user.name }}" />
+    <img class="prof-edit-avatar" src="{{ profile_user.photo_url }}" alt="{{ profile_user.name }}" />
+    {% else %}
+    <div class="prof-edit-avatar-fallback">{{ (profile_user.name or 'U')[0]|upper }}</div>
     {% endif %}
+    <div>
+      <h2 class="prof-edit-name">{{ profile_user.name }}</h2>
+      <span class="prof-role-badge {{ profile_user.role }}">{{ profile_user.role|capitalize }}</span>
+      <p class="prof-edit-id">{{ profile_user.university_id }}</p>
+    </div>
+  </div>
 
-    <label>Bio</label>
-    <textarea name="bio" rows="4">{{ profile_user.bio or '' }}</textarea>
+  <form class="prof-edit-form" method="post" enctype="multipart/form-data">
+    <div class="pef-section">
+      <div class="pef-section-label">Identity</div>
+      <div class="pef-grid">
+        <div class="pef-field">
+          <label>Full Name</label>
+          <input type="text" name="name" value="{{ profile_user.name or '' }}" required />
+        </div>
+        <div class="pef-field">
+          <label>University ID</label>
+          <input type="text" value="{{ profile_user.university_id }}" disabled />
+        </div>
+        <div class="pef-field">
+          <label>Phone</label>
+          <input type="text" name="phone" value="{{ profile_user.phone or '' }}" placeholder="+91 XXXXX XXXXX" />
+        </div>
+        <div class="pef-field">
+          <label>Photo URL</label>
+          <input type="url" name="photo_url" value="{{ profile_user.photo_url or '' }}" placeholder="https://..." />
+        </div>
+      </div>
+      <div class="pef-field">
+        <label>Upload Profile Photo</label>
+        <input type="file" name="photo_file" accept=".png,.jpg,.jpeg,.webp" class="file-input" />
+      </div>
+    </div>
+
+    <div class="pef-section">
+      <div class="pef-section-label">About</div>
+      <div class="pef-field">
+        <label>Bio</label>
+        <textarea name="bio" rows="4" placeholder="Tell students about yourself...">{{ profile_user.bio or '' }}</textarea>
+      </div>
+    </div>
 
     {% if current_user.role == 'professor' %}
-    <label>Subject(s) Taught</label>
-    <input type="text" name="subject" value="{{ profile_user.subject or '' }}" />
-
-    <label>Designation</label>
-    <input type="text" name="designation" value="{{ profile_user.designation or '' }}" />
-
-    <label>Free for doubts</label>
-    <input type="text" name="free_hours" value="{{ profile_user.free_hours or '' }}" placeholder="Mon-Fri 3 PM - 5 PM" />
-
-    <label>Branch / Department</label>
-    <input type="text" name="branch" value="{{ profile_user.branch or '' }}" />
+    <div class="pef-section">
+      <div class="pef-section-label">Academic</div>
+      <div class="pef-grid">
+        <div class="pef-field">
+          <label>Subject(s) Taught</label>
+          <input type="text" name="subject" value="{{ profile_user.subject or '' }}" placeholder="DSA, ML" />
+        </div>
+        <div class="pef-field">
+          <label>Designation</label>
+          <input type="text" name="designation" value="{{ profile_user.designation or '' }}" placeholder="Associate Professor" />
+        </div>
+        <div class="pef-field">
+          <label>Office Hours</label>
+          <input type="text" name="free_hours" value="{{ profile_user.free_hours or '' }}" placeholder="Mon-Fri 3–5 PM" />
+        </div>
+        <div class="pef-field">
+          <label>Branch / Department</label>
+          <input type="text" name="branch" value="{{ profile_user.branch or '' }}" placeholder="CSE" />
+        </div>
+      </div>
+    </div>
     {% endif %}
 
     {% if current_user.role == 'student' %}
-    <label>Branch</label>
-    <input type="text" name="branch" value="{{ profile_user.branch or '' }}" />
-
-    <label>Program</label>
-    <input type="text" name="study_program" value="{{ profile_user.study_program or '' }}" />
-
-    <label class="check-row">
-      <input type="checkbox" name="open_to_collab" {% if profile_user.open_to_collab %}checked{% endif %} />
-      Open to collaboration with professors
-    </label>
+    <div class="pef-section">
+      <div class="pef-section-label">Academic</div>
+      <div class="pef-grid">
+        <div class="pef-field">
+          <label>Branch</label>
+          <input type="text" name="branch" value="{{ profile_user.branch or '' }}" />
+        </div>
+        <div class="pef-field">
+          <label>Program</label>
+          <input type="text" name="study_program" value="{{ profile_user.study_program or '' }}" />
+        </div>
+      </div>
+      <label class="pef-checkbox">
+        <input type="checkbox" name="open_to_collab" {% if profile_user.open_to_collab %}checked{% endif %} />
+        <span>Open to collaboration with professors</span>
+      </label>
+    </div>
     {% endif %}
 
     {% if current_user.role == 'admin' %}
-    <label>Designation</label>
-    <input type="text" name="designation" value="{{ profile_user.designation or '' }}" />
+    <div class="pef-section">
+      <div class="pef-section-label">Academic</div>
+      <div class="pef-field">
+        <label>Designation</label>
+        <input type="text" name="designation" value="{{ profile_user.designation or '' }}" />
+      </div>
+    </div>
     {% endif %}
 
-    <button class="btn" type="submit">Save Profile</button>
+    <button class="btn prof-save-btn" type="submit">Save Profile</button>
   </form>
-</section>
+</div>
+
 {% else %}
-<section class="grid-2">
-  <article class="card">
-    <div class="between">
-      <h3>{{ profile_user.name }}</h3>
-      <span class="tag {{ profile_user.role }}">{{ profile_user.role }}</span>
+{# ═══════════════════════════════════════════════
+   FACULTY / OTHER PROFILE — Glassmorphism View
+═══════════════════════════════════════════════ #}
+
+{# Dynamic initials + colour for hero #}
+{% set hero_init = (profile_user.name or 'U')[0]|upper %}
+{% set role_col = '#248657' if profile_user.role == 'professor' else '#b04159' %}
+
+<div class="fac-profile-page">
+
+  {# ── HERO BANNER ── #}
+  <div class="fac-hero">
+    <div class="fac-hero-bg"></div>
+    <div class="fac-hero-orb fac-hero-orb-1"></div>
+    <div class="fac-hero-orb fac-hero-orb-2"></div>
+    <div class="fac-hero-orb fac-hero-orb-3"></div>
+
+    <div class="fac-hero-inner">
+      <div class="fac-avatar-wrap">
+        {% if profile_user.photo_blob %}
+        <img class="fac-avatar-img" src="{{ url_for('user_photo', user_id=profile_user.id) }}" alt="{{ profile_user.name }}" />
+        {% elif profile_user.photo_url %}
+        <img class="fac-avatar-img" src="{{ profile_user.photo_url }}" alt="{{ profile_user.name }}" />
+        {% else %}
+        <div class="fac-avatar-init">{{ hero_init }}</div>
+        {% endif %}
+        <div class="fac-avatar-ring"></div>
+      </div>
+
+      <div class="fac-hero-info">
+        <div class="fac-hero-badges">
+          <span class="fac-role-chip {{ profile_user.role }}">{{ profile_user.role|capitalize }}</span>
+          {% if profile_user.university_id %}
+          <span class="fac-id-chip">{{ profile_user.university_id }}</span>
+          {% endif %}
+        </div>
+        <h1 class="fac-hero-name">{{ profile_user.name }}</h1>
+        {% if profile_user.designation %}
+        <p class="fac-hero-desig">{{ profile_user.designation }}{% if profile_user.branch %} &middot; {{ profile_user.branch }}{% endif %}</p>
+        {% endif %}
+        {% if profile_user.subject %}
+        <p class="fac-hero-subjects">{{ profile_user.subject }}</p>
+        {% endif %}
+
+        <div class="fac-hero-actions">
+          {% if current_user.role == 'student' and profile_user.role == 'professor' %}
+            {% if is_following %}
+            <form method="post" action="{{ url_for('unfollow_professor', professor_id=profile_user.id) }}">
+              <button class="fac-btn-glass fac-btn-unfollow" type="submit">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                Unfollow
+              </button>
+            </form>
+            {% else %}
+            <form method="post" action="{{ url_for('follow_professor', professor_id=profile_user.id) }}">
+              <button class="fac-btn-glass fac-btn-follow" type="submit">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                Follow
+              </button>
+            </form>
+            {% endif %}
+          {% endif %}
+          {% if timetable %}
+          <a class="fac-btn-glass" href="{{ url_for('download_timetable', timetable_id=timetable.id) }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Timetable
+          </a>
+          {% endif %}
+        </div>
+      </div>
     </div>
 
-    {% if profile_user.photo_blob %}
-    <img class="avatar" src="{{ url_for('user_photo', user_id=profile_user.id) }}" alt="{{ profile_user.name }}" />
-    {% elif profile_user.photo_url %}
-    <img class="avatar" src="{{ profile_user.photo_url }}" alt="{{ profile_user.name }}" />
-    {% endif %}
-
-    <p>{{ profile_user.bio or 'No bio available.' }}</p>
-    <p class="meta">✉ {{ profile_user.email }}</p>
-    <p class="meta">📞 {{ profile_user.phone or 'Not set' }}</p>
-    <p class="meta">Designation: {{ profile_user.designation or 'Not set' }}</p>
-    <p class="meta">Subject: {{ profile_user.subject or 'Not set' }}</p>
-    <p class="meta">Doubt Hours: {{ profile_user.free_hours or 'Not set' }}</p>
-
-    {% if current_user.role == 'student' and profile_user.role == 'professor' %}
-      {% if is_following %}
-      <form method="post" action="{{ url_for('unfollow_professor', professor_id=profile_user.id) }}">
-        <button class="btn btn-soft" type="submit">Unfollow</button>
-      </form>
-      {% else %}
-      <form method="post" action="{{ url_for('follow_professor', professor_id=profile_user.id) }}">
-        <button class="btn" type="submit">Follow</button>
-      </form>
+    {# Quick stat strip #}
+    <div class="fac-stat-strip">
+      <div class="fac-stat">
+        <span class="fac-stat-num">{{ notes|length }}</span>
+        <span class="fac-stat-lbl">Notes</span>
+      </div>
+      <div class="fac-stat-div"></div>
+      <div class="fac-stat">
+        <span class="fac-stat-num">{{ papers|length }}</span>
+        <span class="fac-stat-lbl">Question Papers</span>
+      </div>
+      {% if profile_user.free_hours %}
+      <div class="fac-stat-div"></div>
+      <div class="fac-stat">
+        <span class="fac-stat-num" style="font-size:0.78rem;letter-spacing:0">{{ profile_user.free_hours }}</span>
+        <span class="fac-stat-lbl">Office Hours</span>
+      </div>
       {% endif %}
-    {% endif %}
+    </div>
+  </div>
 
-    {% if timetable %}
-    <hr />
-    <h4>Timetable</h4>
-    <a class="btn btn-light" href="{{ url_for('download_timetable', timetable_id=timetable.id) }}">View Timetable</a>
-    {% endif %}
-  </article>
+  {# ── CONTENT GRID ── #}
+  <div class="fac-content-grid">
 
-  <article class="card">
-    <h3>Recent Notes</h3>
-    {% if notes %}
-      {% for note in notes %}
-      <div class="list-card between">
-        <div>
-          <h4>{{ note.title }}</h4>
-          <p class="meta">{{ note.subject }} | {{ note.created_at }}</p>
-        </div>
-        <a class="btn btn-light" href="{{ url_for('download_note', note_id=note.id) }}">Download</a>
+    {# LEFT column: Bio + Contact #}
+    <div class="fac-col-left">
+      {# Bio glass card #}
+      {% if profile_user.bio %}
+      <div class="glass-card">
+        <div class="glass-card-label">About</div>
+        <p class="fac-bio-text">{{ profile_user.bio }}</p>
       </div>
-      {% endfor %}
-    {% else %}
-      <p class="muted">No notes published yet.</p>
-    {% endif %}
+      {% endif %}
 
-    <h3>Question Papers</h3>
-    {% if papers %}
-      {% for p in papers %}
-      <div class="list-card between">
-        <div>
-          <h4>{{ p.title }}</h4>
-          <p class="meta">{{ p.subject }} | {{ p.exam_year }}</p>
+      {# Contact glass card #}
+      <div class="glass-card">
+        <div class="glass-card-label">Contact & Info</div>
+        <div class="fac-info-list">
+          {% if profile_user.email %}
+          <div class="fac-info-row">
+            <span class="fac-info-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+            </span>
+            <div>
+              <div class="fac-info-label">Email</div>
+              <a class="fac-info-value" href="mailto:{{ profile_user.email }}">{{ profile_user.email }}</a>
+            </div>
+          </div>
+          {% endif %}
+          {% if profile_user.phone %}
+          <div class="fac-info-row">
+            <span class="fac-info-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13.7 19.79 19.79 0 0 1 1.61 5.18 2 2 0 0 1 3.6 3h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 10.6a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 17.92z"/></svg>
+            </span>
+            <div>
+              <div class="fac-info-label">Phone</div>
+              <div class="fac-info-value">{{ profile_user.phone }}</div>
+            </div>
+          </div>
+          {% endif %}
+          {% if profile_user.branch %}
+          <div class="fac-info-row">
+            <span class="fac-info-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </span>
+            <div>
+              <div class="fac-info-label">Department</div>
+              <div class="fac-info-value">{{ profile_user.branch }}</div>
+            </div>
+          </div>
+          {% endif %}
+          {% if profile_user.free_hours %}
+          <div class="fac-info-row">
+            <span class="fac-info-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </span>
+            <div>
+              <div class="fac-info-label">Office Hours</div>
+              <div class="fac-info-value">{{ profile_user.free_hours }}</div>
+            </div>
+          </div>
+          {% endif %}
         </div>
-        <a class="btn btn-light" href="{{ url_for('download_previous_question', question_id=p.id) }}">Download</a>
       </div>
-      {% endfor %}
-    {% else %}
-      <p class="muted">No question papers uploaded yet.</p>
-    {% endif %}
-  </article>
-</section>
+    </div>
+
+    {# RIGHT column: Notes + Papers #}
+    <div class="fac-col-right">
+      {# Notes #}
+      <div class="glass-card">
+        <div class="glass-card-label-row">
+          <div class="glass-card-label">Notes & Materials</div>
+          {% if notes %}
+          <span class="glass-card-count">{{ notes|length }}</span>
+          {% endif %}
+        </div>
+
+        {% if notes %}
+        <div class="fac-file-list">
+          {% for note in notes %}
+          <div class="fac-file-item">
+            <div class="fac-file-icon note-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            </div>
+            <div class="fac-file-meta">
+              <div class="fac-file-name">{{ note.title }}</div>
+              <div class="fac-file-sub">
+                <span class="fac-file-tag">{{ note.subject }}</span>
+                <span class="fac-file-date">{{ note.created_at[:10] }}</span>
+                {% if note.is_important %}<span class="fac-file-imp">★ Important</span>{% endif %}
+              </div>
+            </div>
+            <a class="fac-file-dl" href="{{ url_for('download_note', note_id=note.id) }}" title="Download">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+            </a>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="fac-empty">No notes published yet.</p>
+        {% endif %}
+      </div>
+
+      {# Question Papers #}
+      <div class="glass-card">
+        <div class="glass-card-label-row">
+          <div class="glass-card-label">Question Papers</div>
+          {% if papers %}
+          <span class="glass-card-count">{{ papers|length }}</span>
+          {% endif %}
+        </div>
+
+        {% if papers %}
+        <div class="fac-file-list">
+          {% for p in papers %}
+          <div class="fac-file-item">
+            <div class="fac-file-icon paper-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            </div>
+            <div class="fac-file-meta">
+              <div class="fac-file-name">{{ p.title }}</div>
+              <div class="fac-file-sub">
+                <span class="fac-file-tag">{{ p.subject }}</span>
+                <span class="fac-file-date">{{ p.exam_year }}</span>
+              </div>
+              {% if p.important_questions %}
+              <div class="fac-iq-preview">
+                {% for line in p.important_questions.split('\n')[:2] if line.strip() %}
+                <div class="fac-iq-line">★ {{ line.strip() }}</div>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+            <a class="fac-file-dl" href="{{ url_for('download_previous_question', question_id=p.id) }}" title="Download">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+            </a>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="fac-empty">No question papers uploaded yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>{# /fac-content-grid #}
+</div>{# /fac-profile-page #}
 {% endif %}
+
+<style>
+/* ═══════════════════════════════════════════════════════
+   FACULTY PROFILE — Glassmorphism Styles
+   Scoped to this page only, overrides nothing global
+═══════════════════════════════════════════════════════ */
+
+/* ── HERO BANNER ─────────────────────────────── */
+.fac-profile-page {
+  margin: -1rem;               /* bleed to edge of content-area */
+}
+
+.fac-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 2.5rem 2rem 0;
+  background: linear-gradient(135deg, #0d2e1e 0%, #163d28 40%, #1b4d32 100%);
+  isolation: isolate;
+}
+
+.fac-hero-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 60% at 15% 50%, rgba(36,134,87,0.35) 0%, transparent 65%),
+    radial-gradient(ellipse 50% 80% at 85% 20%, rgba(36,134,87,0.18) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 40% at 50% 100%, rgba(0,0,0,0.4) 0%, transparent 60%);
+  z-index: 0;
+}
+
+.fac-hero-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0.22;
+  z-index: 0;
+  pointer-events: none;
+}
+.fac-hero-orb-1 { width: 260px; height: 260px; background: #34d399; top: -60px; left: -40px; animation: heroFloat 8s ease-in-out infinite; }
+.fac-hero-orb-2 { width: 200px; height: 200px; background: #10b981; top: 20px; right: 10%; animation: heroFloat 11s ease-in-out infinite reverse; }
+.fac-hero-orb-3 { width: 150px; height: 150px; background: #6ee7b7; bottom: 40px; right: 30%; animation: heroFloat 9s ease-in-out infinite 2s; }
+@keyframes heroFloat {
+  0%,100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-18px) scale(1.06); }
+}
+
+.fac-hero-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 1.6rem;
+  flex-wrap: wrap;
+}
+
+/* ── AVATAR ── */
+.fac-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.fac-avatar-img,
+.fac-avatar-init {
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.8rem;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #248657, #10b981);
+  border: 3px solid rgba(255,255,255,0.25);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+}
+.fac-avatar-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid rgba(52,211,153,0.45);
+  animation: ringPulse 2.5s ease-in-out infinite;
+}
+@keyframes ringPulse {
+  0%,100% { transform: scale(1); opacity: 0.45; }
+  50% { transform: scale(1.04); opacity: 0.8; }
+}
+
+/* ── HERO TEXT ── */
+.fac-hero-info {
+  flex: 1;
+  min-width: 200px;
+  padding-bottom: 0.4rem;
+}
+.fac-hero-badges {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.55rem;
+}
+.fac-role-chip {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.25);
+  backdrop-filter: blur(8px);
+}
+.fac-role-chip.professor { background: rgba(36,134,87,0.4); color: #a7f3d0; border-color: rgba(52,211,153,0.4); }
+.fac-role-chip.admin { background: rgba(176,65,89,0.4); color: #fecdd3; border-color: rgba(251,113,133,0.4); }
+.fac-id-chip {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.7);
+  backdrop-filter: blur(8px);
+}
+.fac-hero-name {
+  margin: 0 0 0.3rem;
+  font-size: clamp(1.4rem, 3vw, 2.1rem);
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+.fac-hero-desig {
+  margin: 0 0 0.2rem;
+  font-size: 0.92rem;
+  color: rgba(255,255,255,0.65);
+}
+.fac-hero-subjects {
+  margin: 0 0 0.9rem;
+  font-size: 0.84rem;
+  color: #6ee7b7;
+  font-weight: 600;
+}
+
+/* ── HERO ACTION BUTTONS ── */
+.fac-hero-actions {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+.fac-btn-glass {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s;
+  text-decoration: none;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.14);
+  color: #fff;
+}
+.fac-btn-glass:hover {
+  background: rgba(255,255,255,0.24);
+  border-color: rgba(255,255,255,0.38);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+.fac-btn-follow { background: rgba(36,134,87,0.55); border-color: rgba(52,211,153,0.4); }
+.fac-btn-follow:hover { background: rgba(36,134,87,0.8); }
+.fac-btn-unfollow { background: rgba(176,65,89,0.35); }
+
+/* ── STAT STRIP ── */
+.fac-stat-strip {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-top: 1.6rem;
+  background: rgba(255,255,255,0.07);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255,255,255,0.12);
+  border-radius: 0;
+}
+.fac-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.85rem 2rem;
+  gap: 0.15rem;
+}
+.fac-stat-num {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.fac-stat-lbl {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.fac-stat-div {
+  width: 1px;
+  height: 32px;
+  background: rgba(255,255,255,0.14);
+}
+
+/* ── CONTENT GRID ── */
+.fac-content-grid {
+  display: grid;
+  grid-template-columns: 310px 1fr;
+  gap: 1.25rem;
+  padding: 1.4rem;
+  align-items: start;
+}
+
+.fac-col-left,
+.fac-col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+/* ── GLASS CARDS ── */
+.glass-card {
+  background: rgba(255,255,255,0.72);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,0.55);
+  border-radius: 18px;
+  padding: 1.1rem 1.2rem;
+  box-shadow:
+    0 4px 24px rgba(22,80,53,0.08),
+    0 1px 4px rgba(22,80,53,0.04),
+    inset 0 1px 0 rgba(255,255,255,0.7);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.glass-card:hover {
+  box-shadow:
+    0 8px 32px rgba(22,80,53,0.12),
+    0 2px 8px rgba(22,80,53,0.06),
+    inset 0 1px 0 rgba(255,255,255,0.7);
+  transform: translateY(-1px);
+}
+
+.glass-card-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #248657;
+  margin-bottom: 0.75rem;
+}
+.glass-card-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+.glass-card-count {
+  background: #e8f5ee;
+  color: #248657;
+  font-size: 0.7rem;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
+/* ── BIO ── */
+.fac-bio-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: #2d4a3e;
+}
+
+/* ── INFO LIST ── */
+.fac-info-list {
+  display: grid;
+  gap: 0.75rem;
+}
+.fac-info-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+.fac-info-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #e8f5ee, #d1f0e0);
+  border: 1px solid rgba(36,134,87,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.fac-info-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke: #248657;
+}
+.fac-info-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8fa89a;
+  margin-bottom: 0.1rem;
+}
+.fac-info-value {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #1a3628;
+  text-decoration: none;
+}
+a.fac-info-value:hover { color: #248657; text-decoration: underline; }
+
+/* ── FILE LIST ── */
+.fac-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.fac-file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(248,252,250,0.8);
+  border: 1px solid rgba(215,231,222,0.7);
+  transition: all 0.16s;
+}
+.fac-file-item:hover {
+  background: rgba(232,245,238,0.95);
+  border-color: rgba(36,134,87,0.25);
+  transform: translateX(2px);
+}
+.fac-file-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.note-icon {
+  background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+  border: 1px solid rgba(96,165,250,0.25);
+}
+.note-icon svg { width: 16px; height: 16px; stroke: #2563eb; }
+.paper-icon {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 1px solid rgba(245,158,11,0.25);
+}
+.paper-icon svg { width: 16px; height: 16px; stroke: #d97706; }
+
+.fac-file-meta {
+  flex: 1;
+  min-width: 0;
+}
+.fac-file-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #1a3628;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fac-file-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.2rem;
+}
+.fac-file-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: #e8f5ee;
+  color: #248657;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid rgba(36,134,87,0.2);
+}
+.fac-file-date {
+  font-size: 0.72rem;
+  color: #8fa89a;
+}
+.fac-file-imp {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: #fff4cc;
+  color: #92700a;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid rgba(234,179,8,0.3);
+}
+
+.fac-iq-preview {
+  margin-top: 0.35rem;
+}
+.fac-iq-line {
+  font-size: 0.74rem;
+  color: #7e6113;
+  background: rgba(255,246,205,0.7);
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+  margin-bottom: 0.18rem;
+  border-left: 2px solid #f59e0b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fac-file-dl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(36,134,87,0.1);
+  border: 1px solid rgba(36,134,87,0.2);
+  color: #248657;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.fac-file-dl svg { width: 15px; height: 15px; }
+.fac-file-dl:hover {
+  background: #248657;
+  color: #fff;
+  transform: scale(1.08);
+}
+
+.fac-empty {
+  font-size: 0.88rem;
+  color: #8fa89a;
+  text-align: center;
+  padding: 1.2rem 0 0.4rem;
+  margin: 0;
+}
+
+/* ── EDIT PROFILE (own profile) ────────────────── */
+.prof-edit-wrap {
+  max-width: 740px;
+}
+.prof-edit-header {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  margin-bottom: 1.5rem;
+  padding: 1.2rem;
+  background: linear-gradient(135deg, #e8f5ee, #d1f0e0);
+  border-radius: 16px;
+  border: 1px solid rgba(36,134,87,0.18);
+}
+.prof-edit-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #248657;
+  box-shadow: 0 4px 12px rgba(36,134,87,0.2);
+}
+.prof-edit-avatar-fallback {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #248657, #10b981);
+  color: #fff;
+  font-size: 2rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255,255,255,0.4);
+  flex-shrink: 0;
+}
+.prof-edit-name { margin: 0 0 0.25rem; font-size: 1.3rem; font-weight: 800; color: #1a3628; }
+.prof-edit-id { margin: 0.2rem 0 0; font-size: 0.8rem; color: #6d8578; font-weight: 600; }
+.prof-role-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.prof-role-badge.professor { background: #e8f5ee; color: #248657; border: 1px solid rgba(36,134,87,0.3); }
+.prof-role-badge.admin { background: #ffe8ed; color: #b04159; border: 1px solid rgba(176,65,89,0.3); }
+.prof-role-badge.student { background: #e8f5ee; color: #248657; border: 1px solid rgba(36,134,87,0.3); }
+
+.prof-edit-form {
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.6);
+  border-radius: 18px;
+  box-shadow: 0 4px 24px rgba(22,80,53,0.07);
+  overflow: hidden;
+}
+.pef-section {
+  padding: 1.2rem 1.4rem;
+  border-bottom: 1px solid rgba(215,231,222,0.5);
+}
+.pef-section:last-child { border-bottom: none; }
+.pef-section-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #248657;
+  margin-bottom: 0.9rem;
+}
+.pef-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+  margin-bottom: 0.7rem;
+}
+.pef-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.pef-field label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #4a635a;
+  letter-spacing: 0.02em;
+}
+.pef-field input,
+.pef-field textarea,
+.pef-field select {
+  border: 1.5px solid #d4e5dc;
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+  background: #f8fcfa;
+  color: #1a3628;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+.pef-field input:focus,
+.pef-field textarea:focus {
+  border-color: #248657;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(36,134,87,0.12);
+}
+.pef-field input:disabled {
+  background: #f0f7f3;
+  color: #8fa89a;
+  cursor: not-allowed;
+}
+.pef-field textarea { resize: vertical; min-height: 90px; }
+.file-input { border-style: dashed !important; cursor: pointer; }
+.pef-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #2d4a3e;
+  cursor: pointer;
+  margin-top: 0.4rem;
+}
+.pef-checkbox input[type=checkbox] {
+  width: 16px;
+  height: 16px;
+  accent-color: #248657;
+  cursor: pointer;
+}
+.prof-save-btn {
+  display: block;
+  width: calc(100% - 2.8rem);
+  margin: 1.2rem 1.4rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #248657, #1b6a45);
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.18s;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 16px rgba(36,134,87,0.3);
+}
+.prof-save-btn:hover {
+  background: linear-gradient(135deg, #1b6a45, #145235);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(36,134,87,0.38);
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  .fac-content-grid {
+    grid-template-columns: 1fr;
+    padding: 1rem;
+  }
+  .pef-grid { grid-template-columns: 1fr; }
+  .fac-hero-inner { flex-direction: column; align-items: flex-start; }
+  .fac-stat-strip { flex-wrap: wrap; }
+}
+</style>
 {% endblock %}

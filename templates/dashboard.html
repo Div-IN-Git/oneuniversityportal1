@@ -1,0 +1,273 @@
+{% extends 'base.html' %}
+{% block app_content %}
+{% if current_user.role == 'student' %}
+<section class="grid-3">
+  {% if overall_attendance.percent < attendance_threshold %}
+  <article class="card warning-card col-3">
+    <h3>⚠ Attendance Warning!</h3>
+    <p>
+      Your attendance is {{ overall_attendance.percent }}%, which is below {{ attendance_threshold }}% requirement.
+      Please attend classes regularly.
+    </p>
+  </article>
+  {% endif %}
+
+  <article class="metric-card">
+    <div class="metric-head">
+      <span class="metric-label">Overall Attendance</span>
+      <span class="metric-icon">✅</span>
+    </div>
+    <h2>{{ overall_attendance.percent }}%</h2>
+    <p>Overall Attendance</p>
+    <div class="progress"><span style="width: {{ overall_attendance.percent }}%"></span></div>
+    <div class="metric-note">Stay above {{ attendance_threshold }}% to stay exam-ready.</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-head">
+      <span class="metric-label">Fresh Updates</span>
+      <span class="metric-icon">📢</span>
+    </div>
+    <h2>{{ announcement_count }}</h2>
+    <p>New Announcements</p>
+    <div class="metric-note">Keep up with the latest department and campus notices.</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-head">
+      <span class="metric-label">Study Material</span>
+      <span class="metric-icon">📘</span>
+    </div>
+    <h2>{{ note_count }}</h2>
+    <p>Notes Available</p>
+    <div class="metric-note">All your uploaded and shared resources in one place.</div>
+  </article>
+</section>
+
+<section class="grid-2">
+  <article class="card">
+    <div class="card-head between">
+      <h3>📢 Recent Announcements</h3>
+      <a class="btn btn-light" href="{{ url_for('announcements') }}">View All</a>
+    </div>
+    {% if recent_announcements %}
+      {% for ann in recent_announcements %}
+      <div class="list-card" id="ann-{{ ann.id }}">
+        <p class="tag {{ ann.type }}">{{ ann.type|capitalize }}</p>
+        <h4>{{ ann.title }}</h4>
+        <p>{{ ann.message }}</p>
+        <p class="meta">{{ ann.author_name }} - {{ ann.created_at }}</p>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No announcements yet.</p>
+    {% endif %}
+  </article>
+
+  <article class="card">
+    <h3>📊 Subject-wise Attendance</h3>
+    {% if attendance_rows %}
+      {% for item in attendance_rows %}
+      <div class="att-row">
+        <div class="between">
+          <strong>{{ item.subject }}</strong>
+          <span class="{% if item.is_shortage %}text-danger{% endif %}">{{ item.percent }}%</span>
+        </div>
+        <div class="progress"><span style="width: {{ item.percent }}%"></span></div>
+        <p class="meta">{{ item.present }}/{{ item.total }} classes</p>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">Attendance data not available yet.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section>
+  <article class="card">
+    <div class="card-head between">
+      <h3>👨‍🏫 Followed Professors</h3>
+      <a class="btn btn-light" href="{{ url_for('faculty_directory') }}">Manage</a>
+    </div>
+    {% if followed_professors %}
+      {% for prof in followed_professors %}
+      <div class="list-card between">
+        <div>
+          <h4>{{ prof.name }}</h4>
+          <p class="meta">{{ prof.designation or 'Professor' }} | {{ prof.branch or 'ALL' }}</p>
+          <p class="meta">{{ prof.subject or 'Subject not set' }}</p>
+        </div>
+        <a class="btn btn-light" href="{{ url_for('user_profile', user_id=prof.id) }}">View</a>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">None followed yet.</p>
+    {% endif %}
+  </article>
+</section>
+
+{% elif current_user.role == 'professor' %}
+<section class="grid-3">
+  <article class="metric-card">
+    <div class="metric-head">
+      <span class="metric-label">Reach</span>
+      <span class="metric-icon">👥</span>
+    </div>
+    <h2>{{ stats.followers }}</h2>
+    <p>Followers</p>
+    <div class="metric-note">Students currently tracking your profile and updates.</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-head">
+      <span class="metric-label">Resource Library</span>
+      <span class="metric-icon">📁</span>
+    </div>
+    <h2>{{ stats.notes }}</h2>
+    <p>My Notes</p>
+    <div class="metric-note">Materials you have shared with the portal community.</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-head">
+      <span class="metric-label">Broadcasts</span>
+      <span class="metric-icon">📣</span>
+    </div>
+    <h2>{{ stats.announcements }}</h2>
+    <p>My Announcements</p>
+    <div class="metric-note">Posts and notices published by you so far.</div>
+  </article>
+</section>
+
+<section class="grid-2">
+  <article class="card">
+    <div class="card-head between">
+      <h3>📁 My Uploaded Notes</h3>
+      <a class="btn btn-light" href="{{ url_for('notes_page') }}">Manage</a>
+    </div>
+    {% if my_notes %}
+      {% for note in my_notes %}
+      <div class="list-card">
+        <h4>{{ note.title }}</h4>
+        <p class="meta">{{ note.subject }} | {{ note.created_at }}</p>
+        {% if note.is_important %}<span class="tag warning">Important</span>{% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">You have not uploaded notes yet.</p>
+    {% endif %}
+  </article>
+
+  <article class="card">
+    <h3>⚠ Students At Risk (Attendance &lt; {{ attendance_threshold }}%)</h3>
+    {% if risk_rows %}
+      {% for row in risk_rows %}
+      <div class="list-card between">
+        <div>
+          <h4>{{ row.name }}</h4>
+          <p class="meta">Overall attendance: {{ row.percent }}%</p>
+        </div>
+        <a class="btn btn-light" href="{{ url_for('attendance', student_id=row.id) }}">Open</a>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No students currently below threshold.</p>
+    {% endif %}
+  </article>
+</section>
+
+{% else %}
+<section class="grid-3">
+  <article class="metric-card">
+    <div class="metric-head"><span class="metric-label">Portal Reach</span><span class="metric-icon">👥</span></div>
+    <h2>{{ stats.users }}</h2>
+    <p>Total Users</p>
+    <div class="metric-note">Everyone currently active across the unified portal.</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-head"><span class="metric-label">Learners</span><span class="metric-icon">🎓</span></div>
+    <h2>{{ stats.students }}</h2>
+    <p>Students</p>
+    <div class="metric-note">Students enrolled and using the portal workflows.</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-head"><span class="metric-label">Faculty Team</span><span class="metric-icon">👨‍🏫</span></div>
+    <h2>{{ stats.professors }}</h2>
+    <p>Professors</p>
+    <div class="metric-note">Faculty members sharing materials and updates.</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-head"><span class="metric-label">Knowledge Base</span><span class="metric-icon">📁</span></div>
+    <h2>{{ stats.notes }}</h2>
+    <p>Notes</p>
+    <div class="metric-note">All uploaded notes and study resources in the system.</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-head"><span class="metric-label">Announcements</span><span class="metric-icon">📢</span></div>
+    <h2>{{ stats.announcements }}</h2>
+    <p>Announcements</p>
+    <div class="metric-note">Official updates posted across departments and campus.</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-head"><span class="metric-label">Schedules</span><span class="metric-icon">🗓</span></div>
+    <h2>{{ stats.timetables }}</h2>
+    <p>Timetables</p>
+    <div class="metric-note">Timetables available for download across branches.</div>
+  </article>
+</section>
+
+<section class="admin-wide-section">
+  <article class="card admin-users-card">
+    <h3>Manage Users</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>ID</th><th>Role</th><th>Change Role</th><th>Delete Account</th></tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td><a href="{{ url_for('user_profile', user_id=u.id) }}">{{ u.name }}</a></td>
+            <td>{{ u.university_id }}</td>
+            <td>{{ u.role }}</td>
+            <td>
+              <form class="inline" method="post" action="{{ url_for('change_role', user_id=u.id) }}">
+                <select name="new_role">
+                  <option value="student">Student</option>
+                  <option value="professor">Professor</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <button class="btn btn-light" type="submit">Update</button>
+              </form>
+            </td>
+            <td>
+              {% if u.role in ['student', 'professor'] %}
+              <form method="post" action="{{ url_for('delete_user', user_id=u.id) }}">
+                <button class="btn btn-danger" type="submit">Delete</button>
+              </form>
+              {% else %}
+              <span class="meta">Protected</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+</section>
+
+<section>
+  <article class="card admin-notes-card">
+    <h3>Recent Notes</h3>
+    {% for n in admin_notes %}
+    <div class="list-card between">
+      <div>
+        <h4>{{ n.title }}</h4>
+        <p class="meta">{{ n.subject }} | {{ n.professor_name }}</p>
+      </div>
+      <form method="post" action="{{ url_for('delete_note', note_id=n.id) }}">
+        <button class="btn btn-danger" type="submit">Delete</button>
+      </form>
+    </div>
+    {% endfor %}
+  </article>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UUP Portal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260404h') }}" />
+  </head>
+  <body class="{% if current_user %}app-body{% else %}guest-body{% endif %}">
+    {% if current_user %}
+    <div class="app-shell">
+      <aside class="left-sidebar" id="leftSidebar">
+        <a class="brand" href="{{ url_for('dashboard') }}">
+          <span class="brand-mark animated-icon">🎓</span>
+          <span>UUP</span>
+        </a>
+
+        <section class="user-chip">
+          {% if current_user.photo_blob %}
+          <img class="avatar-thumb" src="{{ url_for('user_photo', user_id=current_user.id) }}" alt="{{ current_user.name }}" />
+          {% elif current_user.photo_url %}
+          <img class="avatar-thumb" src="{{ current_user.photo_url }}" alt="{{ current_user.name }}" />
+          {% else %}
+          <div class="avatar-circle">{{ (current_user.name or 'U')[0]|upper }}</div>
+          {% endif %}
+          <div>
+            <p class="u-name">{{ current_user.name }}</p>
+            <p class="u-role">{{ current_user.university_id or current_user.role|upper }}</p>
+            <p class="u-role">{{ current_user.role|upper }}</p>
+          </div>
+        </section>
+
+        <nav class="menu-list">
+          <a class="menu-item {% if active_nav == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}"><span class="menu-icon animated-icon">🏠</span><span>Home</span></a>
+          <a class="menu-item {% if active_nav == 'announcements' %}active{% endif %}" href="{{ url_for('announcements') }}"><span class="menu-icon animated-icon">📢</span><span>Announcements</span></a>
+          <a class="menu-item {% if active_nav == 'notes' %}active{% endif %}" href="{{ url_for('notes_page') }}"><span class="menu-icon animated-icon">📁</span><span>Notes & Materials</span></a>
+          <a class="menu-item {% if active_nav == 'question_papers' %}active{% endif %}" href="{{ url_for('question_papers') }}"><span class="menu-icon animated-icon">📄</span><span>Question Papers</span></a>
+          <a class="menu-item {% if active_nav == 'attendance' %}active{% endif %}" href="{{ url_for('attendance') }}"><span class="menu-icon animated-icon">✅</span><span>Attendance</span></a>
+          <a class="menu-item {% if active_nav == 'timetables' %}active{% endif %}" href="{{ url_for('timetables') }}"><span class="menu-icon animated-icon">🗓</span><span>Timetables</span></a>
+          <a class="menu-item {% if active_nav == 'faculty' %}active{% endif %}" href="{{ url_for('faculty_directory') }}"><span class="menu-icon animated-icon">👨‍🏫</span><span>Faculty Directory</span></a>
+          <a class="menu-item {% if active_nav == 'exam_ready' %}active{% endif %}" href="{{ url_for('exam_ready') }}"><span class="menu-icon animated-icon">🧠</span><span>Exam Ready</span></a>
+          <a class="menu-item {% if active_nav == 'notifications' %}active{% endif %}" href="{{ url_for('notifications') }}"><span class="menu-icon animated-icon">🔔</span><span>Notifications{% if unread_count %} ({{ unread_count }}){% endif %}</span></a>
+          <a class="menu-item {% if active_nav == 'profile' %}active{% endif %}" href="{{ url_for('profile') }}"><span class="menu-icon animated-icon">👤</span><span>My Profile</span></a>
+        </nav>
+
+        <a class="signout-btn" href="{{ url_for('logout') }}">Sign Out</a>
+      </aside>
+
+      <div class="main-shell">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="icon-btn" id="mobileSidebarToggle" type="button">☰</button>
+            <h1>{{ page_title or 'Dashboard' }}</h1>
+          </div>
+          <form class="search-form" action="{{ url_for('faculty_directory') }}" method="get">
+            <input
+              type="text"
+              id="globalSearchInput"
+              name="q"
+              placeholder="Search professors & admins..."
+              value="{{ request.args.get('q', '') }}"
+              autocomplete="off"
+            />
+            <div class="search-suggest" id="searchSuggest"></div>
+          </form>
+          <button class="btn drawer-btn" type="button" id="rightDrawerToggle">
+            <span class="btn-icon animated-icon">✨</span>
+            <span>Quick Panel</span>
+          </button>
+        </header>
+
+        <main class="content-area">
+          {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+          <section class="flash-stack">
+            {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </section>
+          {% endif %}
+          {% endwith %}
+
+          {% block app_content %}{% endblock %}
+        </main>
+      </div>
+
+      <aside class="right-drawer" id="rightDrawer">
+        <h3>Quick Panel</h3>
+        <div class="drawer-links">
+          <a href="{{ url_for('notes_page') }}"><span class="drawer-link-icon animated-icon">📁</span><span>Upload / View Notes</span></a>
+          <a href="{{ url_for('question_papers') }}"><span class="drawer-link-icon animated-icon">📄</span><span>Question Papers</span></a>
+          <a href="{{ url_for('announcements') }}"><span class="drawer-link-icon animated-icon">📢</span><span>Post Announcement</span></a>
+          <a href="{{ url_for('attendance') }}"><span class="drawer-link-icon animated-icon">✅</span><span>Attendance</span></a>
+          <a href="{{ url_for('timetables') }}"><span class="drawer-link-icon animated-icon">🗓</span><span>Timetables</span></a>
+        </div>
+
+        <h4>Recent Notifications</h4>
+        <div class="drawer-notes">
+          {% if quick_notifications %}
+            {% for item in quick_notifications %}
+            <article class="tiny-card">
+              <p>{{ item.message }}</p>
+              <span>{{ item.created_at }}</span>
+            </article>
+            {% endfor %}
+          {% else %}
+            <p class="muted">No recent notifications.</p>
+          {% endif %}
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      (() => {
+        const drawerBtn = document.getElementById('rightDrawerToggle');
+        const rightDrawer = document.getElementById('rightDrawer');
+        const sidebarToggle = document.getElementById('mobileSidebarToggle');
+        const leftSidebar = document.getElementById('leftSidebar');
+        const searchInput = document.getElementById('globalSearchInput');
+        const searchSuggest = document.getElementById('searchSuggest');
+        let searchTimer = null;
+        let activeIdx = -1;
+        let cachedItems = [];
+
+        if (drawerBtn && rightDrawer) {
+          drawerBtn.addEventListener('click', () => {
+            rightDrawer.classList.toggle('open');
+          });
+        }
+
+        if (sidebarToggle && leftSidebar) {
+          sidebarToggle.addEventListener('click', () => {
+            leftSidebar.classList.toggle('open');
+          });
+        }
+
+        function closeSuggest() {
+          if (!searchSuggest) return;
+          searchSuggest.classList.remove('open');
+          searchSuggest.innerHTML = '';
+          activeIdx = -1;
+          cachedItems = [];
+        }
+
+        function renderSuggest(items) {
+          if (!searchSuggest) return;
+          if (!items.length) {
+            closeSuggest();
+            return;
+          }
+
+          cachedItems = items;
+          searchSuggest.innerHTML = items
+            .map((item, idx) => {
+              const avatar = item.avatar
+                ? `<img class="ss-avatar" src="${item.avatar}" alt="${item.name}" />`
+                : `<div class="ss-avatar ss-fallback">${item.name[0].toUpperCase()}</div>`;
+              const roleBadge = item.role === 'admin' ? 'ss-role admin' : 'ss-role professor';
+              return `
+                <a class="ss-item ${idx === activeIdx ? 'active' : ''}" data-idx="${idx}" href="/user/${item.id}">
+                  ${avatar}
+                  <div class="ss-meta">
+                    <strong>${item.name}</strong>
+                    <span>${item.designation || item.subject || ''}</span>
+                  </div>
+                  <span class="${roleBadge}">${item.role}</span>
+                </a>
+              `;
+            })
+            .join('');
+          searchSuggest.classList.add('open');
+        }
+
+        async function fetchSuggestions(query) {
+          try {
+            const response = await fetch(`/search/professor-suggestions?q=${encodeURIComponent(query)}`);
+            if (!response.ok) return closeSuggest();
+            const data = await response.json();
+            renderSuggest(data.items || []);
+          } catch (_) {
+            closeSuggest();
+          }
+        }
+
+        if (searchInput && searchSuggest) {
+          searchInput.addEventListener('input', () => {
+            const q = searchInput.value.trim();
+            if (searchTimer) clearTimeout(searchTimer);
+            if (q.length < 1) {
+              closeSuggest();
+              return;
+            }
+            searchTimer = setTimeout(() => fetchSuggestions(q), 140);
+          });
+
+          searchInput.addEventListener('keydown', (event) => {
+            if (!searchSuggest.classList.contains('open') || !cachedItems.length) return;
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              activeIdx = (activeIdx + 1) % cachedItems.length;
+              renderSuggest(cachedItems);
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              activeIdx = (activeIdx - 1 + cachedItems.length) % cachedItems.length;
+              renderSuggest(cachedItems);
+            } else if (event.key === 'Enter' && activeIdx >= 0) {
+              event.preventDefault();
+              window.location.href = `/user/${cachedItems[activeIdx].id}`;
+            } else if (event.key === 'Escape') {
+              closeSuggest();
+            }
+          });
+
+          document.addEventListener('click', (event) => {
+            if (!searchSuggest.contains(event.target) && event.target !== searchInput) {
+              closeSuggest();
+            }
+          });
+        }
+      })();
+    </script>
+    {% else %}
+    <main class="guest-wrap">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <section class="flash-stack">
+        {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </section>
+      {% endif %}
+      {% endwith %}
+
+      {% block guest_content %}{% endblock %}
+    </main>
+    {% endif %}
+    <canvas class="cursor-trail" id="cursorTrail" aria-hidden="true"></canvas>
+    <script>
+      (() => {
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+        const revealTargets = Array.from(
+          document.querySelectorAll(
+            '.topbar, .card, .metric-card, .list-card, .faculty-card, .tiny-card, .auth-card, .landing-card, .role-pick, .feature-pill, .drawer-links a, .menu-item, .glass-card, .fac-file-item, .prof-edit-header, .pef-section, .pef-stat, .admin-users-card, .admin-notes-card'
+          )
+        );
+
+        revealTargets.forEach((item, index) => {
+          item.classList.add('reveal-block');
+          item.style.setProperty('--enter-delay', `${Math.min(index, 18) * 24}ms`);
+        });
+
+        if (reduceMotion || !('IntersectionObserver' in window)) {
+          revealTargets.forEach((item) => item.classList.add('is-visible'));
+        } else {
+          const observer = new IntersectionObserver(
+            (entries) => {
+              entries.forEach((entry) => {
+                if (!entry.isIntersecting) return;
+                entry.target.classList.add('is-visible');
+                observer.unobserve(entry.target);
+              });
+            },
+            { threshold: 0.14, rootMargin: '0px 0px -8% 0px' }
+          );
+
+          revealTargets.forEach((item) => observer.observe(item));
+        }
+
+        if (reduceMotion || coarsePointer || !window.PointerEvent) return;
+
+        const resetTilt = (element) => {
+          element.style.setProperty('--tilt-x', '0deg');
+          element.style.setProperty('--tilt-y', '0deg');
+          element.style.setProperty('--pointer-x', '50%');
+          element.style.setProperty('--pointer-y', '50%');
+          element.style.setProperty('--shadow-x', '0px');
+          element.style.setProperty('--shadow-y', '24px');
+        };
+
+        document
+          .querySelectorAll('.metric-card, .faculty-card, .auth-card, .landing-card')
+          .forEach((element) => {
+            element.setAttribute('data-tilt', 'true');
+            resetTilt(element);
+
+            element.addEventListener('pointermove', (event) => {
+              const rect = element.getBoundingClientRect();
+              const px = (event.clientX - rect.left) / rect.width;
+              const py = (event.clientY - rect.top) / rect.height;
+              const offsetX = px - 0.5;
+              const offsetY = py - 0.5;
+              const maxTilt = element.classList.contains('metric-card') ? 14 : 5.5;
+              const shadowRangeX = element.classList.contains('metric-card') ? 24 : 10;
+              const shadowRangeY = element.classList.contains('metric-card') ? 14 : 6;
+              if (element.classList.contains('metric-card')) {
+                element.classList.add('tilt-live');
+              }
+              const tiltY = offsetX * maxTilt;
+              const tiltX = -offsetY * maxTilt;
+              element.style.setProperty('--tilt-x', `${tiltX.toFixed(2)}deg`);
+              element.style.setProperty('--tilt-y', `${tiltY.toFixed(2)}deg`);
+              element.style.setProperty('--pointer-x', `${(px * 100).toFixed(2)}%`);
+              element.style.setProperty('--pointer-y', `${(py * 100).toFixed(2)}%`);
+              element.style.setProperty('--shadow-x', `${(offsetX * shadowRangeX).toFixed(2)}px`);
+              element.style.setProperty('--shadow-y', `${(22 + offsetY * shadowRangeY).toFixed(2)}px`);
+            });
+
+            element.addEventListener('pointerleave', () => {
+              element.classList.remove('tilt-live');
+              resetTilt(element);
+            });
+            element.addEventListener(
+              'blur',
+              () => {
+                element.classList.remove('tilt-live');
+                resetTilt(element);
+              },
+              true
+            );
+          });
+
+        const cursorTrail = document.getElementById('cursorTrail');
+        if (!cursorTrail) return;
+
+        const ctx = cursorTrail.getContext('2d');
+        if (!ctx) return;
+
+        const particles = [];
+        const pointer = { x: null, y: null, active: false };
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const palette = [
+          [28, 109, 78],
+          [36, 134, 87],
+          [85, 131, 224],
+          [177, 122, 76],
+        ];
+
+        const resizeTrail = () => {
+          cursorTrail.width = Math.floor(window.innerWidth * dpr);
+          cursorTrail.height = Math.floor(window.innerHeight * dpr);
+          cursorTrail.style.width = `${window.innerWidth}px`;
+          cursorTrail.style.height = `${window.innerHeight}px`;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        };
+
+        const spawnParticle = (x, y, intensity = 1) => {
+          for (let index = 0; index < intensity; index += 1) {
+            const color = palette[Math.floor(Math.random() * palette.length)];
+            particles.push({
+              x,
+              y,
+              vx: (Math.random() - 0.5) * 1.05,
+              vy: (Math.random() - 0.5) * 1.05 - 0.18,
+              life: 1,
+              decay: 0.03 + Math.random() * 0.018,
+              size: 0.9 + Math.random() * 1.6,
+              color,
+            });
+          }
+        };
+
+        const drawTrail = () => {
+          ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+          for (let index = particles.length - 1; index >= 0; index -= 1) {
+            const particle = particles[index];
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.vx *= 0.98;
+            particle.vy = particle.vy * 0.98 + 0.018;
+            particle.life -= particle.decay;
+
+            if (particle.life <= 0) {
+              particles.splice(index, 1);
+              continue;
+            }
+
+            const [r, g, b] = particle.color;
+            const radius = particle.size * (1.15 - particle.life * 0.18);
+            const gradient = ctx.createRadialGradient(particle.x, particle.y, 0, particle.x, particle.y, radius * 2.1);
+            gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${particle.life * 0.3})`);
+            gradient.addColorStop(0.62, `rgba(${r}, ${g}, ${b}, ${particle.life * 0.12})`);
+            gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, radius * 2.1, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${particle.life * 0.14})`;
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, Math.max(0.55, radius * 0.45), 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          if (pointer.active && pointer.x !== null && pointer.y !== null) {
+            const halo = ctx.createRadialGradient(pointer.x, pointer.y, 0, pointer.x, pointer.y, 22);
+            halo.addColorStop(0, 'rgba(36, 134, 87, 0.085)');
+            halo.addColorStop(0.65, 'rgba(85, 131, 224, 0.045)');
+            halo.addColorStop(1, 'rgba(85, 131, 224, 0)');
+            ctx.fillStyle = halo;
+            ctx.beginPath();
+            ctx.arc(pointer.x, pointer.y, 22, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          window.requestAnimationFrame(drawTrail);
+        };
+
+        window.addEventListener('pointermove', (event) => {
+          pointer.x = event.clientX;
+          pointer.y = event.clientY;
+          pointer.active = true;
+          spawnParticle(event.clientX, event.clientY, 1);
+        });
+
+        window.addEventListener('pointerdown', (event) => {
+          pointer.x = event.clientX;
+          pointer.y = event.clientY;
+          spawnParticle(event.clientX, event.clientY, 4);
+        });
+
+        window.addEventListener('pointerleave', () => {
+          pointer.active = false;
+        });
+
+        window.addEventListener('resize', resizeTrail);
+        resizeTrail();
+        drawTrail();
+      })();
+    </script>
+  </body>
+</html>

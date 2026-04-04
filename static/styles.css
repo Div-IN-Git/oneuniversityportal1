@@ -624,9 +624,9 @@ textarea:focus-visible {
   will-change: transform, box-shadow;
   transition:
     opacity 0.24s ease,
-    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 120ms ease;
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms ease;
 }
 
 .metric-card::before {
@@ -654,7 +654,7 @@ textarea:focus-visible {
 }
 
 .metric-card:hover {
-  transform: perspective(980px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(var(--reveal-y, 0px)) scale(0.97);
+  transform: perspective(980px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(calc(var(--reveal-y, 0px) - 2px)) scale(1.01);
   box-shadow:
     var(--shadow-x, 0px) var(--shadow-y, 24px) 58px rgba(71, 115, 142, 0.24),
     0 16px 30px rgba(188, 214, 229, 0.18),
@@ -678,14 +678,14 @@ textarea:focus-visible {
 .metric-card p,
 .metric-note {
   transform: translateZ(24px);
-  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .metric-card:hover .metric-head,
 .metric-card:hover h2,
 .metric-card:hover p,
 .metric-card:hover .metric-note {
-  transform: translateZ(32px);
+  transform: translateZ(38px);
 }
 
 .metric-card h2 {
@@ -734,19 +734,11 @@ textarea:focus-visible {
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
     0 12px 22px rgba(110, 144, 166, 0.12);
   transition:
-    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 120ms ease;
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms ease;
   transform: translateZ(38px) translateY(var(--icon-shift-y, 0px)) scale(var(--icon-scale, 1));
 }
 
-.metric-card.tilt-live,
-.metric-card.tilt-live .metric-head,
-.metric-card.tilt-live h2,
-.metric-card.tilt-live p,
-.metric-card.tilt-live .metric-note,
-.metric-card.tilt-live .metric-icon {
-  transition-duration: 0ms !important;
-}
 
 .metric-card:hover .metric-icon {
   box-shadow:

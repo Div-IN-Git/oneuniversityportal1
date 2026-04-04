@@ -279,46 +279,48 @@
         };
 
         document
-          .querySelectorAll('.metric-card, .faculty-card, .auth-card, .landing-card')
-          .forEach((element) => {
+        .querySelectorAll('.metric-card, .faculty-card, .auth-card, .landing-card')
+        .forEach((element) => {
             element.setAttribute('data-tilt', 'true');
             resetTilt(element);
 
             element.addEventListener('pointermove', (event) => {
-              const rect = element.getBoundingClientRect();
-              const px = (event.clientX - rect.left) / rect.width;
-              const py = (event.clientY - rect.top) / rect.height;
-              const offsetX = px - 0.5;
-              const offsetY = py - 0.5;
-              const maxTilt = element.classList.contains('metric-card') ? 14 : 5.5;
-              const shadowRangeX = element.classList.contains('metric-card') ? 24 : 10;
-              const shadowRangeY = element.classList.contains('metric-card') ? 14 : 6;
-              if (element.classList.contains('metric-card')) {
-                element.classList.add('tilt-live');
-              }
-              const tiltY = offsetX * maxTilt;
-              const tiltX = -offsetY * maxTilt;
-              element.style.setProperty('--tilt-x', `${tiltX.toFixed(2)}deg`);
-              element.style.setProperty('--tilt-y', `${tiltY.toFixed(2)}deg`);
-              element.style.setProperty('--pointer-x', `${(px * 100).toFixed(2)}%`);
-              element.style.setProperty('--pointer-y', `${(py * 100).toFixed(2)}%`);
-              element.style.setProperty('--shadow-x', `${(offsetX * shadowRangeX).toFixed(2)}px`);
-              element.style.setProperty('--shadow-y', `${(22 + offsetY * shadowRangeY).toFixed(2)}px`);
+            const rect = element.getBoundingClientRect();
+            const px = (event.clientX - rect.left) / rect.width;
+            const py = (event.clientY - rect.top) / rect.height;
+            const offsetX = px - 0.5;
+            const offsetY = py - 0.5;
+
+            const isMetric = element.classList.contains('metric-card');
+            const maxTilt = isMetric ? 18 : 6;
+
+            // INWARD tilt: negate both axes so corners press IN
+            const tiltY = -offsetX * maxTilt;
+            const tiltX = offsetY * maxTilt;
+
+            if (isMetric) element.classList.add('tilt-live');
+
+            const shadowDepth = 10 + Math.abs(offsetX) * 18 + Math.abs(offsetY) * 14;
+            const sx = -offsetX * 20;
+            const sy = -offsetY * 14 + 16;
+
+            element.style.setProperty('--tilt-x', `${tiltX.toFixed(2)}deg`);
+            element.style.setProperty('--tilt-y', `${tiltY.toFixed(2)}deg`);
+            element.style.setProperty('--pointer-x', `${(px * 100).toFixed(2)}%`);
+            element.style.setProperty('--pointer-y', `${(py * 100).toFixed(2)}%`);
+            element.style.setProperty('--shadow-x', `${sx.toFixed(2)}px`);
+            element.style.setProperty('--shadow-y', `${sy.toFixed(2)}px`);
             });
 
             element.addEventListener('pointerleave', () => {
-              element.classList.remove('tilt-live');
-              resetTilt(element);
+            element.classList.remove('tilt-live');
+            resetTilt(element);
             });
-            element.addEventListener(
-              'blur',
-              () => {
-                element.classList.remove('tilt-live');
-                resetTilt(element);
-              },
-              true
-            );
-          });
+            element.addEventListener('blur', () => {
+            element.classList.remove('tilt-live');
+            resetTilt(element);
+            }, true);
+        });
 
         const cursorTrail = document.getElementById('cursorTrail');
         if (!cursorTrail) return;

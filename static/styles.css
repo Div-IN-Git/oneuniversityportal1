@@ -654,7 +654,7 @@ textarea:focus-visible {
 }
 
 .metric-card:hover {
-  transform: perspective(980px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(calc(var(--reveal-y, 0px) - 8px)) scale(var(--reveal-scale, 1));
+  transform: perspective(980px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(0px) scale(0.97);
   box-shadow:
     var(--shadow-x, 0px) var(--shadow-y, 24px) 58px rgba(71, 115, 142, 0.24),
     0 16px 30px rgba(188, 214, 229, 0.18),
